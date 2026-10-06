@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wave / Whip — overlapping action lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #d9dde3;
+    --panel: #eef0f3;
+    --panel-2: #e2e5ea;
+    --ink: #1d242c;
+    --ink-2: #4a5663;
+    --ink-3: #8b96a3;
+    --line: #c3c9d1;
+    --stage: #ffffff;
+    --joint: #a9d7f3;
+    --joint-stroke: #1d242c;
+    --accent: #e03ac8;
+    --l1: #1d242c; --l2: #2b7fd0; --l3: #e03ac8; --l4: #e58a1f; --l5: #2aa070;
+    --focus: #2b7fd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1f26; --panel: #242a33; --panel-2: #2b323c; --ink: #eef1f4; --ink-2: #b9c1cb; --ink-3: #7f8a97; --line: #3a434f;
+      --l1: #eef1f4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1f26; --panel: #242a33; --panel-2: #2b323c; --ink: #eef1f4; --ink-2: #b9c1cb; --ink-3: #7f8a97; --line: #3a434f;
+    --l1: #eef1f4;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html, body { height: 100%; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px; line-height: 1.4;
+    font-variation-settings: "wdth" 100;
+  }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 14px 18px 8px;
+  }
+  header h1 {
+    margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
+    font-variation-settings: "wdth" 90;
+  }
+  header p { margin: 0; color: var(--ink-2); max-width: 60ch; }
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px;
+    padding: 0 18px 18px;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .stagewrap { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .stage {
+    position: relative; background: var(--stage); border-radius: 6px; overflow: hidden;
+    aspect-ratio: 14 / 9; width: 100%; box-shadow: inset 0 0 0 1px var(--line);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .stage .frame {
+    position: absolute; left: 10px; bottom: 8px; color: #1d242c; opacity: .55;
+    font-variant-numeric: tabular-nums; font-size: 12px;
+  }
+  .stage .readout {
+    position: absolute; right: 10px; top: 8px; color: #1d242c; opacity: .7;
+    font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; line-height: 1.5;
+  }
+
+  .transport {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+    background: var(--panel); border-radius: 6px; padding: 8px 10px;
+  }
+  .transport button { min-width: 72px; }
+  .transport input[type=range] { width: 100%; }
+  .transport .fr { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 7ch; text-align: right; }
+
+  .graph { background: var(--panel); border-radius: 6px; padding: 8px 10px 4px; }
+  .graph .cap { display: flex; justify-content: space-between; color: var(--ink-2); font-size: 12px; margin-bottom: 4px; }
+  .graph canvas { height: 120px; }
+
+  aside { display: flex; flex-direction: column; gap: 10px; }
+  .panel {
+    margin: 0; padding: 10px 12px 12px; background: var(--panel); border-radius: 6px; min-width: 0;
+  }
+  .ph {
+    margin: 0 0 8px; font-weight: 600; font-size: 13px;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  }
+  .ph span { font-weight: 400; color: var(--ink-3); font-size: 12px; text-align: right; }
+  aside, main, .stagewrap { min-width: 0; max-width: 100%; }
+  body { overflow-x: hidden; }
+  .transport.wrap { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .transport.wrap > span { white-space: nowrap; }
+  .row {
+    display: grid; grid-template-columns: 1fr 5.5ch; gap: 4px 10px; align-items: center; margin-bottom: 8px;
+  }
+  .row:last-child { margin-bottom: 0; }
+  .row label { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--ink-2); }
+  .row label b { font-weight: 500; color: var(--ink); }
+  .row input[type=range] { width: 100%; }
+  .row output, .row .num {
+    font-variant-numeric: tabular-nums; text-align: right; color: var(--ink);
+  }
+  .row input[type=number] {
+    width: 100%; font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
+  .checks label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+  .seg { display: inline-flex; background: var(--panel-2); border-radius: 5px; padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--ink-2); padding: 4px 9px; border-radius: 4px; font: inherit; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--stage); color: #1d242c; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  .segrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--ink-2); }
+  .segrow:last-child { margin-bottom: 0; }
+
+  button.btn {
+    font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 5px; padding: 6px 10px; cursor: pointer;
+  }
+  button.btn:hover { background: var(--line); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .presets button { padding: 5px 9px; }
+  .note { color: var(--ink-2); font-size: 13px; margin: 2px 0 0; }
+  .note code { font-family: inherit; color: var(--ink); background: var(--panel-2); padding: 0 4px; border-radius: 3px; }
+
+  input[type=range] { accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); }
+  input[type=color] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: transparent; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: -1px; margin-right: 2px; }
+  .legend { display: flex; gap: 12px; color: var(--ink-2); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wave / whip: a chain of pendulums</h1>
+  <p>Each link is a pendulum hanging off the one above it. Change how long a swing takes, how far it travels, how late each link starts, and how the angle grows or dies down the chain, then watch what the tip does.</p>
+</header>
+
+<main>
+  <section class="stagewrap">
+    <div class="stage">
+      <canvas id="stage"></canvas>
+      <div class="readout" id="readout"></div>
+      <div class="frame" id="frameLabel">frame 0</div>
+    </div>
+
+    <div class="transport">
+      <button class="btn" id="play" aria-label="Play or pause">Pause</button>
+      <input type="range" id="scrub" min="0" max="239" step="1" value="0" aria-label="Scrub frames">
+      <span class="fr" id="scrubLabel">0 / 240</span>
+    </div>
+    <div class="transport wrap">
+      <span style="color:var(--ink-2)">Frame rate</span>
+      <div class="seg" id="fps">
+        <button data-v="24" aria-pressed="true">24</button>
+        <button data-v="30" aria-pressed="false">30</button>
+      </div>
+      <span style="color:var(--ink-2); margin-left:auto">Hold each drawing on</span>
+      <div class="seg" id="hold">
+        <button data-v="1" aria-pressed="false">Ones</button>
+        <button data-v="2" aria-pressed="true">Twos</button>
+        <button data-v="3" aria-pressed="false">Threes</button>
+        <button data-v="4" aria-pressed="false">Fours</button>
+      </div>
+    </div>
+
+    <div class="graph">
+      <div class="cap">
+        <span>Rotation of each link over time</span>
+        <span class="legend" id="graphLegend"></span>
+      </div>
+      <canvas id="graph"></canvas>
+    </div>
+
+    <div class="graph">
+      <div class="cap">
+        <span>Animator's timing chart for one swing of link 1</span>
+        <span id="chartCap"></span>
+      </div>
+      <canvas id="tchart" style="height:340px"></canvas>
+    </div>
+  </section>
+
+  <aside>
+    <section class="panel">
+      <h2 class="ph">Starting points</h2>
+      <div class="presets">
+        <button class="btn" data-preset="rigid">Rigid rod</button>
+        <button class="btn" data-preset="follow">Simple follow-through</button>
+        <button class="btn" data-preset="whip">Whip</button>
+        <button class="btn" data-preset="drag">Heavy drag</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Swing <span>the first link</span></h2>
+      <div class="row">
+        <label for="angle">Swing angle <b>degrees each way</b></label>
+        <input type="range" id="angle" min="0" max="180" step="1" value="35">
+        <input type="number" id="angleN" min="0" max="180" step="1" value="35" aria-label="Swing angle">
+      </div>
+      <div class="row">
+        <label for="timing">Timing <b>frames for one swing · snaps to counts that break down</b></label>
+        <input type="range" id="timing" min="2" max="24" step="1" value="24">
+        <input type="number" id="timingN" min="2" max="24" step="1" value="24" aria-label="Timing">
+      </div>
+      <div class="segrow">
+        <span>Easing</span>
+        <div class="seg" id="ease">
+          <button data-v="even" aria-pressed="false">Even</button>
+          <button data-v="halves" aria-pressed="true">Halves</button>
+          <button data-v="thirds" aria-pressed="false">Thirds</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Down the chain <span>what each link inherits</span></h2>
+      <div class="row">
+        <label for="links">Links</label>
+        <input type="range" id="links" min="2" max="5" step="1" value="3">
+        <output id="linksO">3</output>
+      </div>
+      <div class="row">
+        <label for="offset">Offset <b>frames of delay per link</b></label>
+        <input type="range" id="offset" min="0" max="16" step="1" value="6">
+        <input type="number" id="offsetN" min="0" max="48" step="1" value="6" aria-label="Offset">
+      </div>
+      <div class="row">
+        <label for="mult">Angle+ <b>how the angle changes per link</b></label>
+        <input type="range" id="mult" min="0.1" max="2" step="0.05" value="1">
+        <input type="number" id="multN" min="0.1" max="3" step="0.05" value="1" aria-label="Angle multiplier">
+      </div>
+      <p class="note">Below 1 the swing tapers down the chain (drag). Above 1 it grows (whip). Each link steps the same amount from the one before, so the tip is affected most.</p>
+      <div class="checks" id="holds"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Overlays</h2>
+      <div class="segrow">
+        <span>Onion skinning</span>
+        <div class="seg" id="ghostMode">
+          <button data-v="off" aria-pressed="true">Off</button>
+          <button data-v="local" aria-pressed="false">Local</button>
+          <button data-v="global" aria-pressed="false">Global</button>
+        </div>
+      </div>
+      <div class="row">
+        <label for="ghosts">Previous drawings shown</label>
+        <input type="range" id="ghosts" min="1" max="16" step="1" value="8">
+        <output id="ghostsO">8</output>
+      </div>
+      <p class="note">Each skin is a drawing that was actually held, so on twos they sit two frames apart. Global shows where the chain was; Local shows each link's past angle against the link above's current position.</p>
+      <div class="segrow" style="margin-top:4px">
+        <span>Timing charts <small style="color:var(--ink-3)">one tick per drawing</small></span>
+        <label style="display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)"><input type="checkbox" id="allCharts"> All</label>
+      </div>
+      <div class="checks" id="compasses"></div>
+      <div class="segrow" style="margin-top:10px">
+        <span>Origin marks <small style="color:var(--ink-3)">dashed rest line</small></span>
+        <span style="display:inline-flex;align-items:center;gap:10px">
+          <label style="display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)"><input type="checkbox" id="allOrigins"> All</label>
+          <input type="color" id="compassColor" value="#e03ac8" aria-label="Origin mark color">
+        </span>
+      </div>
+      <div class="checks" id="origins"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Share this setup</h2>
+      <p class="note">The address bar updates as you change things. Copy the link and students open exactly this configuration.</p>
+      <button class="btn" id="copy" style="margin-top:8px">Copy link</button>
+    </section>
+  </aside>
+</main>
+
+<script>
+(() => {
+  const SECONDS = 10;
+  let FPS = 24, LOOP = 240;
+  const LINK_COLORS = ['--l1','--l2','--l3','--l4','--l5'];
+
+  // ---------- state ----------
+  const S = {
+    angle: 35, timing: 24, ease: 'halves',
+    links: 3, offset: 6, mult: 1,
+    holds: [false,false,false,false,false],
+    ghostMode: 'off', ghosts: 8, fps: 24, hold: 2,
+    compass: [false,false,false,false,false], origin: [true,true,true,true,true], compassColor: '#e03ac8',
+  };
+  const PRESETS = {
+    rigid:  { offset: 0, mult: 1, ease: 'thirds', holds: [false,true,true,true,true] },
+    follow: { offset: 3, mult: 1, ease: 'thirds', links: 3 },
+    whip:   { offset: 4, mult: 1.4, ease: 'halves', links: 4, angle: 30 },
+    drag:   { offset: 6, mult: 0.6, ease: 'thirds', links: 4 },
+  };
+
+  // ---------- rig math (ported from the AE expressions) ----------
+  // Spacing rules named the way a timing chart names them.
+  // Even: in-betweens evenly spaced.  Thirds: each in-between a third of the way to the key (cubic).
+  // Halves: each in-between halves the remaining gap, so spacing doubles every drawing (exponential).
+  // The chart is the construction; the motion follows it.
+  // Drawings sit on frames 1, 1+hold, 1+2*hold ... up to the far key at Timing+1.
+  // Gaps are built from both keys toward the middle: Even = equal, Thirds = each gap a third
+  // larger than the one before it, Halves = each gap double the one before it.
+  // Which gap counts (drawings per swing) break down cleanly for each spacing rule:
+  //   Even   - any count
+  //   Halves - the swing splits in half, then the half nearest each key keeps halving: 2, 4, 6, 8 ...
+  //   Thirds - the swing splits in thirds; then the third nearest each key splits in thirds again, keeping only
+  //            the outer boundary as a drawing (the inner one is a crossed-out guide): 3, 5, 7, 9 ...
+  function validGap(g) {
+    if (g < 1) return false;
+    if (S.ease === 'even') return true;
+    if (S.ease === 'halves') return g % 2 === 0;
+    return g >= 3 && g % 2 === 1;
+  }
+  function nearestValidTiming(T) {
+    const h = Math.max(1, S.hold), lo = +$('timing').min, hi = +$('timing').max;
+    let best = null, bestD = Infinity;
+    for (let t = lo; t <= Math.max(hi, T); t++) {
+      if (t % h !== 0 || !validGap(t / h)) continue;
+      const d = Math.abs(t - T); if (d < bestD || (d === bestD && t > T)) { bestD = d; best = t; }
+    }
+    return best ?? T;
+  }
+
+  let chartCache = null;
+  function buildChart() {
+    const T = Math.max(1, S.timing), h = Math.max(1, S.hold);
+    const key = `${T}|${h}|${S.ease}`;
+    if (chartCache && chartCache.key === key) return chartCache;
+    const frames = [1];
+    for (let f = 1 + h; f < T + 1; f += h) frames.push(f);
+    frames.push(T + 1);
+    const G = frames.length - 1;                 // gaps
+    const pos = [0];
+    const spans = [];                            // arcs: {p0, p1, level}
+    const crosses = [];                          // crossed-out guide marks (thirds): chart positions, no drawing
+
+    if (S.ease === 'even' || !validGap(G)) {
+      for (let i = 1; i <= G; i++) pos.push(i / G);
+      // one layer of equal arcs: the point of an even chart is that every space is the same
+      for (let i = 0; i < G; i++) spans.push({ p0: pos[i], p1: pos[i + 1], level: 1 });
+    } else {
+      // Halves / Thirds: split the swing into q equal pieces; the piece nearest each key
+      // keeps splitting into q until the drawings run out. The middle piece(s) stay whole.
+      const q = S.ease === 'thirds' ? 3 : 2;
+      const levels = S.ease === 'thirds' ? (G - 3) / 2 : G / 2 - 1;   // extra breakdowns per side
+      // one side's gaps, listed from the key toward the middle
+      // pieces(len, depth): the gaps inside a key-side piece of size len after `depth` more splits
+      // For thirds, a nested split keeps the outer boundary as a drawing and crosses out the inner one,
+      // so the two inner sub-pieces merge into one gap (with a guide mark at 2g).
+      const crossesFromKey = [];
+      const pieces = (len, depth) => {
+        if (depth === 0) return [len];
+        const g = len / q;
+        if (q === 3) { crossesFromKey.push(2 * g); return [...pieces(g, depth - 1), 2 * g]; }
+        return [...pieces(g, depth - 1), g];
+      };
+      const sideFromKey = pieces(1 / q, levels);   // the top-level piece nearest the key
+      for (const c of crossesFromKey) crosses.push(c, 1 - c);
+      // positions: key side, (middle piece for thirds), mirrored side
+      let p = 0;
+      for (const g of sideFromKey) { p += g; pos.push(p); }
+      if (q === 3) { p += 1/3; pos.push(p); }
+      for (const g of sideFromKey.slice().reverse()) { p += g; pos.push(p); }
+      // arcs: each split produces q equal arcs at its level
+      const arcs = (p0, len, level, depth) => {  // p0 = key end of the piece, growing toward the middle
+        const g = len / q;
+        for (let i = 0; i < q; i++) spans.push({ p0: p0 + i*g, p1: p0 + (i+1)*g, level });
+        if (depth > 0) arcs(p0, g, level + 1, depth - 1);
+      };
+      arcs(0, 1, 1, levels);
+      const mirrored = spans.slice(q).map(sp => ({ p0: 1 - sp.p1, p1: 1 - sp.p0, level: sp.level }));
+      spans.push(...mirrored);
+    }
+    pos[pos.length - 1] = 1;
+    const gaps = []; for (let i = 1; i < pos.length; i++) gaps.push(pos[i] - pos[i-1]);
+    chartCache = { key, T, h, frames, pos, gaps, spans, crosses, n: G - 1, valid: S.ease === 'even' || validGap(G) };
+    return chartCache;
+  }
+  function easeFn(u) {
+    if (u <= 0) return 0; if (u >= 1) return 1;
+    const ch = buildChart();
+    const t = 1 + u * ch.T;                        // frame position within the swing
+    for (let i = 1; i < ch.frames.length; i++) {
+      if (t <= ch.frames[i]) {
+        const a = ch.frames[i-1], b = ch.frames[i];
+        const k = (t - a) / (b - a);
+        return ch.pos[i-1] + (ch.pos[i] - ch.pos[i-1]) * k;
+      }
+    }
+    return 1;
+  }
+  // Angle multiplier per link: link 2 uses s; link 3+ follow the rig's
+  // "double above 100%, halve below" rule, extended down the chain.
+  // Above 1 the angle grows by the same step each link (1.4 -> 1.4, 1.8, 2.2).
+  // Below 1 it shrinks by the reciprocal of that step, so it tapers just as gradually (0.5 -> 1/2, 1/3, 1/4).
+  function linkMult(k) {
+    const s = S.mult;
+    if (k === 0) return 1;
+    return s >= 1 ? 1 + k*(s-1) : 1 / (1 + k*(1/s - 1));
+  }
+  function linkAngleAt(k, frame) {
+    if (S.holds[k]) return 0;
+    const A = S.angle * linkMult(k);
+    const dur = S.timing;
+    const p = frame - S.offset * k;             // delayed time
+    if (p <= 0 || dur <= 0) return -A;          // waits at the first key
+    const loop = Math.floor(p / dur);
+    const rem = p % dur;
+    const cycle = (loop % 2 === 0) ? rem : dur - rem;   // ping-pong
+    const u = easeFn(cycle / dur);
+    return -A + (2*A) * u;
+  }
+  function chainAt(frame) {
+    const out = []; let acc = 0;
+    for (let k = 0; k < S.links; k++) { const a = linkAngleAt(k, frame); acc += a; out.push({ local: a, world: acc }); }
+    return out;
+  }
+
+  // ---------- drawing ----------
+  const stage = document.getElementById('stage');
+  const ctx = stage.getContext('2d');
+  const graph = document.getElementById('graph');
+  const gtx = graph.getContext('2d');
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  function fit(canvas) {
+    const r = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(r.width*dpr), h = Math.round(r.height*dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    return { w: r.width, h: r.height, dpr };
+  }
+
+  function drawLink(c, x, y, worldDeg, L, alpha, joint) {
+    const a = (worldDeg) * Math.PI/180;
+    const x2 = x + Math.sin(a)*L, y2 = y + Math.cos(a)*L;
+    c.globalAlpha = alpha;
+    c.strokeStyle = '#1d242c'; c.lineWidth = joint ? 5 : 4; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(x,y); c.lineTo(x2,y2); c.stroke();
+    if (joint) {
+      c.fillStyle = css('--joint'); c.beginPath(); c.arc(x2,y2,13,0,Math.PI*2); c.fill();
+      c.lineWidth = 3; c.stroke();
+    }
+    c.globalAlpha = 1;
+    return [x2,y2];
+  }
+
+  function drawChart(c, x, y, baseDeg, A, R) {
+    // Timing chart: locked to the origin (parent space), spanning the link's full swing.
+    // One tick per frame of a swing, placed where the ease puts it, so spacing reads as timing.
+    // links are drawn with x += sin(a), y += cos(a), which is a counter-clockwise canvas rotation
+    c.save(); c.translate(x,y); c.rotate(-baseDeg*Math.PI/180);
+    c.strokeStyle = '#6b7480'; c.globalAlpha = .8; c.lineWidth = 1.5;
+    const toA = d => d*Math.PI/180;
+    c.beginPath(); c.arc(0,0,R, Math.PI/2 - toA(A), Math.PI/2 + toA(A)); c.stroke();
+    const ch = buildChart();
+    for (let i = 0; i < ch.frames.length; i++) {
+      const d = -A + 2*A*ch.pos[i];
+      const end = (i === 0 || i === ch.frames.length - 1);
+      const a = Math.PI/2 + toA(d);
+      const r1 = R - (end ? 14 : 8), r2 = R + (end ? 4 : 0);
+      c.lineWidth = end ? 1.75 : 1;
+      c.beginPath(); c.moveTo(Math.cos(a)*r1, Math.sin(a)*r1); c.lineTo(Math.cos(a)*r2, Math.sin(a)*r2); c.stroke();
+    }
+    c.globalAlpha = .3; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(0,0); c.lineTo(Math.cos(Math.PI/2 - toA(A))*R, Math.sin(Math.PI/2 - toA(A))*R); c.stroke();
+    c.beginPath(); c.moveTo(0,0); c.lineTo(Math.cos(Math.PI/2 + toA(A))*R, Math.sin(Math.PI/2 + toA(A))*R); c.stroke();
+    c.restore();
+  }
+
+  function drawOrigin(c, x, y, restDeg, len) {
+    const col = S.compassColor;
+    // the whole mark is carried by the link above, so rotate it with the rest direction
+    c.save(); c.translate(x,y); c.rotate(-restDeg*Math.PI/180);
+    c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 1.5; c.globalAlpha = .95;
+    const r = 12;
+    c.beginPath(); c.moveTo(-r,0); c.lineTo(r,0); c.moveTo(0,-r); c.lineTo(0,r); c.stroke();
+    c.font = '600 8px Archivo, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('N',0,-r-6); c.fillText('S',0,r+6); c.fillText('W',-r-6,0); c.fillText('E',r+6,0);
+    // dashed rest line: where this link would hang if it weren't swinging
+    c.setLineDash([6,5]); c.globalAlpha = .75; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(0,0); c.lineTo(0, len); c.stroke();
+    c.restore();
+  }
+
+  function render(frame) {
+    const { w, h, dpr } = fit(stage);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    // pivot near the middle so the chain has room above it for big swings; total chain length is constant
+    const L = Math.min(h*0.62, w*0.46) / S.links;
+    const ox = w/2, oy = h*0.285;
+    const chain = chainAt(frame);
+
+    // pivot positions
+    const piv = []; { let x = ox, y = oy; for (let k = 0; k < S.links; k++) { piv.push([x,y]); const a = chain[k].world*Math.PI/180; x += Math.sin(a)*L; y += Math.cos(a)*L; } }
+
+    // timing charts: locked to the origin, i.e. the link above's current rotation
+    for (let k = 0; k < S.links; k++) {
+      if (!S.compass[k]) continue;
+      drawChart(ctx, piv[k][0], piv[k][1], k === 0 ? 0 : chain[k-1].world, Math.max(0, S.angle*linkMult(k)), L*0.72);
+    }
+
+    // ghosts
+    if (S.ghostMode !== 'off') {
+      const n = S.ghosts;
+      for (let g = n; g >= 1; g--) {
+        const gf = frame - g*S.hold;   // the previous drawings that were actually held
+        const alpha = 0.34 * (1 - (g-1)/n);
+        if (S.ghostMode === 'global') {
+          const gc = chainAt(gf); let x = ox, y = oy;
+          for (let k = 0; k < S.links; k++) [x,y] = drawLink(ctx, x, y, gc[k].world, L, alpha, true);
+        } else {
+          // local: each link's past angle, drawn in its parent's *current* space
+          let x = ox, y = oy;
+          for (let k = 0; k < S.links; k++) {
+            const parent = k === 0 ? 0 : chain[k-1].world;
+            drawLink(ctx, x, y, parent + linkAngleAt(k, gf), L, alpha, true);
+            const a = chain[k].world*Math.PI/180; x += Math.sin(a)*L; y += Math.cos(a)*L;
+          }
+        }
+      }
+    }
+
+    // origin marks: fixed orientation, dashed line along the rest direction (the link above)
+    for (let k = 0; k < S.links; k++) {
+      if (!S.origin[k]) continue;
+      drawOrigin(ctx, piv[k][0], piv[k][1], k === 0 ? 0 : chain[k-1].world, L*0.78);
+    }
+
+    // live chain
+    let x = ox, y = oy;
+    ctx.fillStyle = '#1d242c'; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+    for (let k = 0; k < S.links; k++) [x,y] = drawLink(ctx, x, y, chain[k].world, L, 1, true);
+
+    document.getElementById('readout').innerHTML = chain.map((c,i) =>
+      `<span style="color:${css(LINK_COLORS[i])}">link ${i+1}</span> ${c.local.toFixed(1).padStart(6)}°`).join('<br>');
+    document.getElementById('frameLabel').textContent = `frame ${Math.floor(frame)} · ${(Math.floor(frame)/FPS).toFixed(2)} s · ${FPS} fps on ${['','ones','twos','threes','fours'][S.hold]}`;
+  }
+
+  function renderGraph(frame) {
+    const { w, h, dpr } = fit(graph);
+    gtx.setTransform(dpr,0,0,dpr,0,0);
+    gtx.clearRect(0,0,w,h);
+    const span = Math.min(LOOP, Math.max(S.timing*4 + S.offset*S.links, 48));
+    let maxA = 1; for (let k=0;k<S.links;k++) maxA = Math.max(maxA, Math.abs(S.angle*linkMult(k)));
+    const pad = 6, gh = h - pad*2;
+    const X = f => (f/span)*w, Y = a => pad + gh/2 - (a/maxA)*(gh/2);
+    gtx.strokeStyle = css('--line'); gtx.lineWidth = 1;
+    gtx.beginPath(); gtx.moveTo(0,Y(0)); gtx.lineTo(w,Y(0)); gtx.stroke();
+    for (let k = 0; k < S.links; k++) {
+      gtx.strokeStyle = css(LINK_COLORS[k]); gtx.lineWidth = k === 0 ? 2 : 1.5; gtx.beginPath();
+      for (let f = 0; f <= span; f++) { const yy = Y(linkAngleAt(k,f)); f ? gtx.lineTo(X(f),yy) : gtx.moveTo(X(f),yy); }
+      gtx.stroke();
+    }
+    const pf = frame % span;
+    gtx.strokeStyle = css('--ink-3'); gtx.beginPath(); gtx.moveTo(X(pf),0); gtx.lineTo(X(pf),h); gtx.stroke();
+    for (let k = 0; k < S.links; k++) {
+      gtx.fillStyle = css(LINK_COLORS[k]); gtx.beginPath(); gtx.arc(X(pf), Y(linkAngleAt(k,pf)), 3.5, 0, Math.PI*2); gtx.fill();
+    }
+    document.getElementById('graphLegend').innerHTML = Array.from({length:S.links},(_,i) =>
+      `<span><i class="dot" style="background:${css(LINK_COLORS[i])}"></i>${i+1}</span>`).join('');
+  }
+
+  // ---------- animator's chart ----------
+  const tchart = document.getElementById('tchart');
+  const ttx = tchart.getContext('2d');
+  function renderChart(frame) {
+    const { w, h, dpr } = fit(tchart);
+    ttx.setTransform(dpr,0,0,dpr,0,0);
+    ttx.clearRect(0,0,w,h);
+    const ch = buildChart();
+    const ink = css('--ink'), ink2 = css('--ink-2'), line = css('--line'), accent = css('--accent');
+    const top = 30, bot = h - 30, X = w * 0.5;
+    const Y = p => top + (bot - top) * p;
+    ttx.lineCap = 'round';
+
+    // which drawing is being held right now (link 1, within its first swing)
+    const f1 = ((frame % (2*ch.T)) < ch.T) ? (frame % ch.T) + 1 : null;
+    let liveIdx = -1;
+    if (f1 !== null) { for (let i = 0; i < ch.frames.length; i++) if (ch.frames[i] <= f1) liveIdx = i; }
+
+    // spine
+    ttx.strokeStyle = ink; ttx.lineWidth = 3;
+    ttx.beginPath(); ttx.moveTo(X, Y(0)); ttx.lineTo(X, Y(1)); ttx.stroke();
+
+    // arcs on the left: the breakdown tree, bigger spans farther out
+    const spans = ch.spans;
+    const maxLevel = spans.length ? Math.max(...spans.map(sp => sp.level)) : 1;
+    const outerRx = 10 + (maxLevel - 1) * 11;
+    ttx.lineWidth = 1.25;
+    for (const sp of spans) {
+      const y0 = Y(sp.p0), y1 = Y(sp.p1);
+      const mid = (y0 + y1) / 2, ry = Math.max((y1 - y0) / 2, 0.5);
+      const rx = Math.max(5, outerRx - (sp.level - 1) * 11);
+      ttx.strokeStyle = sp.level === 1 ? ink : ink2; ttx.globalAlpha = sp.level === 1 ? 1 : .85;
+      ttx.beginPath(); ttx.ellipse(X - 8, mid, rx, ry, 0, Math.PI/2, 3*Math.PI/2); ttx.stroke();
+    }
+    ttx.globalAlpha = 1;
+    if (ch.n > 0 && S.ease !== 'even') {
+      ttx.fillStyle = ink2; ttx.font = '11px Archivo, sans-serif'; ttx.textAlign = 'center'; ttx.textBaseline = 'middle';
+      ttx.fillText(S.ease === 'thirds' ? '⅓' : '½', X - 8 - (10 + (maxLevel - 1) * 11) - 12, Y(0.5));
+    }
+
+    // crossed-out guides: the inner third of a nested split, placed for spacing but never drawn
+    ttx.strokeStyle = ink2; ttx.lineWidth = 1.5; ttx.globalAlpha = .9;
+    for (const cp of ch.crosses) {
+      const y = Y(cp);
+      ttx.beginPath(); ttx.moveTo(X - 7, y - 6); ttx.lineTo(X + 7, y + 6); ttx.moveTo(X + 7, y - 6); ttx.lineTo(X - 7, y + 6); ttx.stroke();
+    }
+    ttx.globalAlpha = 1;
+
+    // ticks and frame numbers
+    ttx.font = '600 13px Archivo, sans-serif'; ttx.textAlign = 'left'; ttx.textBaseline = 'middle';
+    for (let i = 0; i < ch.frames.length; i++) {
+      const y = Y(ch.pos[i]);
+      const key = (i === 0 || i === ch.frames.length - 1);
+      const mid = Math.abs(ch.pos[i] - 0.5) < 1e-6 && !key;
+      const live = i === liveIdx;
+      const len = key ? 22 : mid ? 16 : 10;
+      ttx.strokeStyle = live ? accent : ink; ttx.lineWidth = key ? 3 : mid ? 2.25 : 1.5;
+      ttx.beginPath(); ttx.moveTo(X - len, y); ttx.lineTo(X + len, y); ttx.stroke();
+      const label = String(ch.frames[i]);
+      ttx.fillStyle = live ? accent : key ? ink : ink2;
+      if (key) {
+        // circled key number
+        const cx = X + 44, cy = y; const rr = 12;
+        ttx.strokeStyle = live ? accent : ink; ttx.lineWidth = 1.75;
+        ttx.beginPath(); ttx.arc(cx, cy, rr, 0, Math.PI*2); ttx.stroke();
+        ttx.textAlign = 'center'; ttx.fillText(label, cx, cy); ttx.textAlign = 'left';
+      } else {
+        ttx.font = mid ? '600 13px Archivo, sans-serif' : '12px Archivo, sans-serif';
+        ttx.fillText(label, X + len + 8, y);
+        ttx.font = '600 13px Archivo, sans-serif';
+      }
+    }
+    const name = { even: 'Even', thirds: 'Thirds', halves: 'Halves' }[S.ease];
+    document.getElementById('chartCap').textContent =
+      `${name} · ${ch.frames.length - 2} in-between${ch.frames.length - 2 === 1 ? '' : 's'} on ${['','ones','twos','threes','fours'][ch.h]}`;
+  }
+
+  // ---------- playback ----------
+  let playing = true, frame = 0, last = performance.now();
+  const scrub = document.getElementById('scrub');
+  function tick(now) {
+    if (playing) {
+      frame = (frame + (now - last)/1000*FPS) % LOOP;
+    }
+    last = now;
+    const f = Math.floor(Math.floor(frame) / S.hold) * S.hold;   // the drawing currently being held
+    render(f); renderGraph(f); renderChart(f);
+    scrub.value = Math.floor(frame);
+    document.getElementById('scrubLabel').textContent = `${Math.floor(frame)} / ${LOOP}`;
+    requestAnimationFrame(tick);
+  }
+  document.getElementById('play').addEventListener('click', e => {
+    playing = !playing; e.currentTarget.textContent = playing ? 'Pause' : 'Play';
+  });
+  scrub.addEventListener('input', () => { playing = false; document.getElementById('play').textContent = 'Play'; frame = +scrub.value; });
+  window.addEventListener('keydown', e => {
+    if (e.target.matches('input,button,select,textarea') && e.code !== 'Space') return;
+    if (e.code === 'Space') { e.preventDefault(); document.getElementById('play').click(); }
+    if (e.key === 'ArrowRight') { playing = false; frame = (Math.floor(frame)+1)%LOOP; }
+    if (e.key === 'ArrowLeft')  { playing = false; frame = (Math.floor(frame)-1+LOOP)%LOOP; }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') document.getElementById('play').textContent = 'Play';
+  });
+
+  // ---------- controls ----------
+  const $ = id => document.getElementById(id);
+  function bindPair(key, rangeId, numId) {
+    const r = $(rangeId), n = $(numId);
+    const set = v => { S[key] = +v; r.value = v; n.value = v; syncHash(); };
+    if (key === 'timing') {
+      // the model snaps to a count that breaks down for the spacing rule; the thumb follows on release
+      r.addEventListener('input', () => { S.timing = nearestValidTiming(+r.value); n.value = S.timing; syncHash(); });
+      r.addEventListener('change', () => set(S.timing));
+      n.addEventListener('change', () => set(nearestValidTiming(Math.min(+n.max, Math.max(+n.min, +n.value || 0)))));
+      return v => set(nearestValidTiming(+v));
+    }
+    r.addEventListener('input', () => set(r.value));
+    n.addEventListener('change', () => set(Math.min(+n.max, Math.max(+n.min, +n.value || 0))));
+    return set;
+  }
+  const setAngle = bindPair('angle','angle','angleN');
+  const setTiming = bindPair('timing','timing','timingN');
+  const setOffset = bindPair('offset','offset','offsetN');
+  const setMult = bindPair('mult','mult','multN');
+
+  $('links').addEventListener('input', () => { S.links = +$('links').value; $('linksO').value = S.links; buildPerLink(); syncHash(); });
+  $('ghosts').addEventListener('input', () => { S.ghosts = +$('ghosts').value; $('ghostsO').value = S.ghosts; syncHash(); });
+  $('compassColor').addEventListener('input', () => { S.compassColor = $('compassColor').value; document.documentElement.style.setProperty('--accent', S.compassColor); syncHash(); });
+
+  function bindSeg(id, key, parse = v => v) {
+    const seg = $(id);
+    seg.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      S[key] = parse(b.dataset.v); refreshSeg(id, key); if (key === 'fps') applyFps(); if (key === 'ease' || key === 'hold') setTiming(S.timing); syncHash();
+    });
+  }
+  function refreshSeg(id, key) {
+    $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v == S[key])));
+  }
+  bindSeg('ease','ease'); bindSeg('ghostMode','ghostMode'); bindSeg('hold','hold', Number); bindSeg('fps','fps', Number);
+
+  function buildPerLink() {
+    const holds = $('holds'), comps = $('compasses'), origs = $('origins');
+    holds.innerHTML = ''; comps.innerHTML = ''; origs.innerHTML = '';
+    for (let k = 0; k < S.links; k++) {
+      const col = css(LINK_COLORS[k]);
+      holds.insertAdjacentHTML('beforeend',
+        `<label><input type="checkbox" data-k="${k}" ${S.holds[k]?'checked':''}><i class="dot" style="background:${col}"></i>Hold link ${k+1}</label>`);
+      comps.insertAdjacentHTML('beforeend',
+        `<label><input type="checkbox" data-k="${k}" ${S.compass[k]?'checked':''}><i class="dot" style="background:${col}"></i>Link ${k+1}</label>`);
+      origs.insertAdjacentHTML('beforeend',
+        `<label><input type="checkbox" data-k="${k}" ${S.origin[k]?'checked':''}><i class="dot" style="background:${col}"></i>Link ${k+1}</label>`);
+    }
+    holds.querySelectorAll('input').forEach(i => i.addEventListener('change', () => { S.holds[+i.dataset.k] = i.checked; syncHash(); }));
+    comps.querySelectorAll('input').forEach(i => i.addEventListener('change', () => { S.compass[+i.dataset.k] = i.checked; syncMasters(); syncHash(); }));
+    origs.querySelectorAll('input').forEach(i => i.addEventListener('change', () => { S.origin[+i.dataset.k] = i.checked; syncMasters(); syncHash(); }));
+    syncMasters();
+  }
+
+  function syncMasters() {
+    const any = arr => arr.slice(0, S.links).some(Boolean), all = arr => arr.slice(0, S.links).every(Boolean);
+    $('allCharts').checked = all(S.compass); $('allCharts').indeterminate = any(S.compass) && !all(S.compass);
+    $('allOrigins').checked = all(S.origin); $('allOrigins').indeterminate = any(S.origin) && !all(S.origin);
+  }
+  $('allCharts').addEventListener('change', () => { S.compass = S.compass.map(() => $('allCharts').checked); buildPerLink(); syncHash(); });
+  $('allOrigins').addEventListener('change', () => { S.origin = S.origin.map(() => $('allOrigins').checked); buildPerLink(); syncHash(); });
+
+  function applyFps() {
+    const prev = FPS;
+    FPS = S.fps; LOOP = SECONDS * FPS;
+    scrub.max = LOOP - 1; frame = frame % LOOP;
+    // slider ranges grow with the rate so one swing can still take up to two seconds
+    $('timing').max = FPS; $('timingN').max = FPS;
+    $('offset').max = Math.round(FPS * 2 / 3); $('offsetN').max = FPS * 2;
+    setTiming(S.timing);
+    if (prev !== FPS) {
+      // keep the same real-time feel: 12 frames at 24 fps becomes 30 at 60, 45 at 60 becomes 18 at 24
+      const r = FPS / prev;
+      setTiming(Math.max(2, Math.round(S.timing * r)));
+      setOffset(Math.round(S.offset * r));
+    }
+  }
+  function applyAll() {
+    setAngle(S.angle); setTiming(S.timing); setOffset(S.offset); setMult(S.mult);
+    $('links').value = S.links; $('linksO').value = S.links;
+    $('ghosts').value = S.ghosts; $('ghostsO').value = S.ghosts;
+    $('compassColor').value = S.compassColor; document.documentElement.style.setProperty('--accent', S.compassColor);
+    ['ease','ghostMode','hold','fps'].forEach(k => refreshSeg(k,k));
+    applyFps();
+    buildPerLink();
+  }
+
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    S.holds = [false,false,false,false,false]; Object.assign(S, PRESETS[b.dataset.preset]);
+    FPS = S.fps; // presets state their own frame values; don't rescale them
+    applyAll(); syncHash(); frame = 0;
+  }));
+
+  // ---------- URL state ----------
+  let hashTimer;
+  function syncHash() {
+    clearTimeout(hashTimer);
+    hashTimer = setTimeout(() => {
+      const o = { ...S, holds: S.holds.map(Number).join(''), compass: S.compass.map(Number).join(''), origin: S.origin.map(Number).join('') };
+      history.replaceState(null, '', '#' + new URLSearchParams(o).toString());
+    }, 150);
+  }
+  function loadHash() {
+    if (!location.hash) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    for (const [k,v] of p) {
+      if (k === 'holds' || k === 'compass' || k === 'origin') S[k] = v.split('').map(c => c === '1').concat([false,false,false,false,false]).slice(0,5);
+      else if (k in S) S[k] = (typeof S[k] === 'number') ? +v : v;
+    }
+    S.ease = { linear: 'even', ease: 'thirds', heavy: 'halves' }[S.ease] || S.ease;
+    if (S.fps !== 24 && S.fps !== 30) S.fps = 24;
+  }
+  $('copy').addEventListener('click', async e => {
+    try { await navigator.clipboard.writeText(location.href); e.currentTarget.textContent = 'Copied'; }
+    catch { e.currentTarget.textContent = 'Copy from the address bar'; }
+    setTimeout(() => e.currentTarget.textContent = 'Copy link', 1800);
+  });
+
+  loadHash(); FPS = S.fps; applyAll();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
