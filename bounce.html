@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bouncing ball — timing, spacing, squash & stretch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #d9dde3; --panel: #eef0f3; --panel-2: #e2e5ea;
+    --ink: #1d242c; --ink-2: #4a5663; --ink-3: #8b96a3; --line: #c3c9d1;
+    --stage: #ffffff; --ball: #f2a33a; --ball-stroke: #1d242c; --ground: #1d242c;
+    --accent: #e03ac8; --focus: #2b7fd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#1a1f26; --panel:#242a33; --panel-2:#2b323c; --ink:#eef1f4; --ink-2:#b9c1cb; --ink-3:#7f8a97; --line:#3a434f; }
+  }
+  :root[data-theme="dark"] { --bg:#1a1f26; --panel:#242a33; --panel-2:#2b323c; --ink:#eef1f4; --ink-2:#b9c1cb; --ink-3:#7f8a97; --line:#3a434f; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html, body { height: 100%; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Archivo","Helvetica Neue",Arial,sans-serif; font-size:14px; line-height:1.4; overflow-x:hidden; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:14px 18px 8px; max-width:1280px; margin:0 auto; }
+  header h1 { margin:0; font-size:22px; font-weight:600; letter-spacing:-0.01em; font-variation-settings:"wdth" 90; }
+  header p { margin:0; color:var(--ink-2); max-width:60ch; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:12px; padding:0 18px 18px; min-width:0; max-width:1280px; margin:0 auto; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; } }
+  .stagewrap { display:flex; flex-direction:column; gap:10px; min-width:0; }
+  .stage { position:relative; background:var(--stage); border-radius:6px; overflow:hidden; aspect-ratio:14/9; width:100%; box-shadow:inset 0 0 0 1px var(--line); }
+  canvas { display:block; width:100%; height:100%; }
+  .stage .frame { position:absolute; left:10px; bottom:8px; color:#1d242c; opacity:.55; font-variant-numeric:tabular-nums; font-size:12px; }
+  .stage .readout { position:absolute; right:10px; top:8px; color:#1d242c; opacity:.7; font-variant-numeric:tabular-nums; font-size:12px; text-align:right; line-height:1.5; }
+  .transport { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; background:var(--panel); border-radius:6px; padding:8px 10px; }
+  .transport button { min-width:72px; }
+  .transport input[type=range] { width:100%; }
+  .transport .fr { font-variant-numeric:tabular-nums; color:var(--ink-2); min-width:7ch; text-align:right; }
+  .transport.wrap { display:flex; flex-wrap:wrap; gap:8px 14px; }
+  .transport.wrap > span { white-space:nowrap; }
+  .graph { background:var(--panel); border-radius:6px; padding:8px 10px 4px; }
+  .graph .cap { display:flex; justify-content:space-between; color:var(--ink-2); font-size:12px; margin-bottom:4px; gap:8px; }
+  .stagerow { display:grid; grid-template-columns:minmax(0,1fr) 150px; gap:10px; align-items:stretch; min-width:0; }
+  @media (max-width:520px) { .stagerow { grid-template-columns:minmax(0,1fr) 128px; } }
+  .chartcol { display:flex; flex-direction:column; background:var(--panel); border-radius:6px; padding:8px 8px 6px; min-width:0; min-height:0; }
+  .chartcol .cap { display:flex; flex-direction:column; gap:1px; color:var(--ink-2); font-size:11px; line-height:1.3; height:2.6em; overflow:hidden; margin-bottom:4px; }
+  .chartcol .cap span:first-child { font-weight:600; color:var(--ink); }
+  .chartcol canvas { flex:1 1 auto; min-height:0; width:100%; height:auto; }
+  .seg.stack { flex-direction:column; margin-top:6px; }
+  .seg.stack button { padding:4px 6px; font-size:12px; text-align:center; }
+  aside { display:flex; flex-direction:column; gap:10px; min-width:0; }
+  .panel { margin:0; padding:10px 12px 12px; background:var(--panel); border-radius:6px; min-width:0; }
+  .ph { margin:0 0 8px; font-weight:600; font-size:13px; display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .ph span { font-weight:400; color:var(--ink-3); font-size:12px; text-align:right; }
+  .row { display:grid; grid-template-columns:1fr 5.5ch; gap:4px 10px; align-items:center; margin-bottom:8px; }
+  .row:last-child { margin-bottom:0; }
+  .row label { grid-column:1 / -1; display:flex; justify-content:space-between; color:var(--ink-2); }
+  .row label b { font-weight:500; color:var(--ink); }
+  .row input[type=range] { width:100%; }
+  .row output { font-variant-numeric:tabular-nums; text-align:right; color:var(--ink); }
+  .row input[type=number] { width:100%; font:inherit; color:var(--ink); background:var(--panel-2); border:1px solid var(--line); border-radius:4px; padding:2px 4px; text-align:right; font-variant-numeric:tabular-nums; }
+  .checks { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:4px; }
+  .checks label { display:inline-flex; align-items:center; gap:6px; color:var(--ink-2); }
+  .seg { display:inline-flex; background:var(--panel-2); border-radius:5px; padding:2px; gap:2px; }
+  .seg button { border:0; background:transparent; color:var(--ink-2); padding:4px 9px; border-radius:4px; font:inherit; cursor:pointer; }
+  .seg button[aria-pressed="true"] { background:var(--stage); color:#1d242c; box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  .segrow { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; color:var(--ink-2); }
+  .segrow:last-child { margin-bottom:0; }
+  button.btn { font:inherit; color:var(--ink); background:var(--panel-2); border:1px solid var(--line); border-radius:5px; padding:6px 10px; cursor:pointer; }
+  button.btn:hover { background:var(--line); }
+  .presets { display:flex; flex-wrap:wrap; gap:6px; }
+  .presets button { padding:5px 9px; }
+  .note { color:var(--ink-2); font-size:13px; margin:2px 0 0; }
+  input[type=range], input[type=checkbox] { accent-color:var(--accent); }
+  input[type=color] { width:28px; height:22px; padding:0; border:1px solid var(--line); border-radius:4px; background:transparent; }
+  :focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bouncing ball: timing, spacing, squash and stretch</h1>
+  <p>A ball drops, bounces, and settles. Change how high it starts, how much bounce it keeps, how the drawings are spaced along each arc, and how much it deforms, then watch what that does to the weight of the ball.</p>
+</header>
+
+<main>
+  <section class="stagewrap">
+    <div class="stagerow">
+      <div class="stage">
+        <canvas id="stage"></canvas>
+        <div class="readout" id="readout"></div>
+        <div class="frame" id="frameLabel">frame 1</div>
+      </div>
+      <div class="chartcol">
+        <div class="cap"><span>Timing chart</span><span id="chartCap"></span></div>
+        <canvas id="tchart"></canvas>
+        <div class="seg stack" id="ease" aria-label="Spacing">
+          <button data-v="even" aria-pressed="false">Even</button>
+          <button data-v="halves" aria-pressed="true">Halves</button>
+          <button data-v="thirds" aria-pressed="false">Thirds</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button class="btn" id="play" aria-label="Play or pause">Pause</button>
+      <input type="range" id="scrub" min="1" max="240" step="1" value="1" aria-label="Scrub frames">
+      <span class="fr" id="scrubLabel">1 / 240</span>
+    </div>
+    <div class="transport wrap">
+      <span style="color:var(--ink-2)">Frame rate</span>
+      <div class="seg" id="fps">
+        <button data-v="24" aria-pressed="true">24</button>
+        <button data-v="30" aria-pressed="false">30</button>
+      </div>
+      <span style="color:var(--ink-2); margin-left:auto">Hold each drawing on</span>
+      <div class="seg" id="hold">
+        <button data-v="1" aria-pressed="false">Ones</button>
+        <button data-v="2" aria-pressed="true">Twos</button>
+        <button data-v="3" aria-pressed="false">Threes</button>
+        <button data-v="4" aria-pressed="false">Fours</button>
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <section class="panel">
+      <h2 class="ph">Starting points</h2>
+      <div class="presets">
+        <button class="btn" data-preset="rubber">Rubber ball</button>
+        <button class="btn" data-preset="bowling">Bowling ball</button>
+        <button class="btn" data-preset="pingpong">Ping-pong ball</button>
+        <button class="btn" data-preset="cartoon">Cartoony</button>
+        <button class="btn" data-preset="inplace">Drop in place</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">The ball</h2>
+      <div class="row">
+        <label for="size">Size <b>radius in pixels</b></label>
+        <input type="range" id="size" min="10" max="60" step="1" value="26">
+        <output id="sizeO">26</output>
+      </div>
+      <div class="row">
+        <label for="squash">Squash and stretch <b>0 = rigid</b></label>
+        <input type="range" id="squash" min="0" max="100" step="1" value="50">
+        <output id="squashO">50</output>
+      </div>
+      <p class="note">Stretch follows the ball's speed and direction between drawings; squash happens on the contact drawing. Volume is kept, so a squashed ball gets wider.</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">The drop</h2>
+      <div class="row">
+        <label for="height">Drop height <b>share of the stage</b></label>
+        <input type="range" id="height" min="20" max="90" step="1" value="70">
+        <output id="heightO">70%</output>
+      </div>
+      <div class="row">
+        <label for="travel">Travel per bounce <b>0 = bounces in place</b></label>
+        <input type="range" id="travel" min="0" max="40" step="1" value="16">
+        <output id="travelO">16%</output>
+      </div>
+      <div class="row">
+        <label for="bounce">Bounciness <b>height kept after each bounce</b></label>
+        <input type="range" id="bounce" min="20" max="90" step="1" value="65">
+        <output id="bounceO">65%</output>
+      </div>
+      <div class="row">
+        <label for="bounces">Bounces</label>
+        <input type="range" id="bounces" min="1" max="8" step="1" value="5">
+        <output id="bouncesO">5</output>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Timing</h2>
+      <div class="row">
+        <label for="timing">Drop timing <b>frames from the apex to the squash</b></label>
+        <input type="range" id="timing" min="2" max="24" step="1" value="12">
+        <input type="number" id="timingN" min="2" max="24" step="1" value="12" aria-label="Drop timing">
+      </div>
+      <p class="note">Spacing (Even / Halves / Thirds, under the chart) is built from the apex of each arc: the ball slows into the top and leaves the ground fast. Each later bounce is a smaller copy of the one before: less height, less travel, fewer frames.</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Overlays</h2>
+      <div class="segrow">
+        <span>Onion skinning</span>
+        <div class="seg" id="onionMode">
+          <button data-v="off" aria-pressed="true">Off</button>
+          <button data-v="on" aria-pressed="false">On</button>
+        </div>
+      </div>
+      <div class="row">
+        <label for="onion">Previous drawings shown</label>
+        <input type="range" id="onion" min="1" max="16" step="1" value="6">
+        <output id="onionO">6</output>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="showPath" checked> Path of the ball</label>
+        <label><input type="checkbox" id="showAll"> Every drawing</label>
+        <label><input type="checkbox" id="showTicks"> Drawing centers on the path</label>
+        <label><input type="checkbox" id="showApex" checked> Apex and contact marks</label>
+      </div>
+      <div class="segrow" style="margin-top:8px">
+        <span>Mark color</span>
+        <input type="color" id="markColor" value="#e03ac8" aria-label="Mark color">
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="ph">Share this setup</h2>
+      <p class="note">The address bar updates as you change things. Copy the link and students open exactly this configuration.</p>
+      <button class="btn" id="copy" style="margin-top:8px">Copy link</button>
+    </section>
+  </aside>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let FPS = 24, LOOP = 240;
+  const REST_SECONDS = 1;
+
+  // ---------- state ----------
+  const S = {
+    size: 26, squash: 50,
+    height: 70, travel: 16, bounce: 65, bounces: 5,
+    timing: 12, ease: 'halves', fps: 24, hold: 2,
+    onionMode: 'off', onion: 6, showPath: true, showAll: false, showTicks: false, showApex: true, markColor: '#e03ac8',
+  };
+  const PRESETS = {
+    rubber:   { size: 26, squash: 50, height: 70, travel: 16, bounce: 65, bounces: 5, timing: 12, ease: 'halves' },
+    bowling:  { size: 44, squash: 5,  height: 50, travel: 10, bounce: 25, bounces: 2, timing: 8, ease: 'halves' },
+    pingpong: { size: 14, squash: 15, height: 60, travel: 12, bounce: 80, bounces: 8, timing: 8, ease: 'halves' },
+    cartoon:  { size: 30, squash: 100, height: 80, travel: 20, bounce: 70, bounces: 4, timing: 12, ease: 'thirds' },
+    inplace:  { size: 26, squash: 50, height: 70, travel: 0,  bounce: 65, bounces: 5, timing: 12, ease: 'halves' },
+  };
+
+  // ---------- one-sided chart: apex (key) to contact (key) ----------
+  // Spacing is built from the apex: the piece nearest the apex keeps splitting.
+  //   Even   - equal gaps
+  //   Halves - split in half; the apex half splits again ... (gaps from apex: r, r, 2r, 4r ...)
+  //   Thirds - split in thirds; the apex third splits again, keeping the outer boundary as a drawing
+  //            and crossing out the inner one (gaps from apex: r, 2r, 6r, 18r ... with guide marks)
+  const chartCache = new Map();
+  function chartFor(G) {                     // G = gaps (drawings = G + 1 including both keys)
+    const key = `${G}|${S.ease}`;
+    if (chartCache.has(key)) return chartCache.get(key);
+    const pos = [0], spans = [], crosses = [];
+    if (S.ease === 'even' || G <= 1) {
+      for (let i = 1; i <= G; i++) pos.push(i / G);
+      // one layer of equal arcs: the point of an even chart is that every space is the same
+      for (let i = 0; i < G; i++) spans.push({ p0: pos[i], p1: pos[i + 1], level: 1 });
+    } else {
+      const q = S.ease === 'thirds' ? 3 : 2;
+      const pieces = (len, depth) => {       // gaps inside a piece of size len (apex end), from apex outward
+        if (depth === 0) return [len];
+        const g = len / q;
+        if (q === 3) return [...pieces(g, depth - 1), 2 * g];
+        return [...pieces(g, depth - 1), g];
+      };
+      const gaps = pieces(1, G - 1);
+      let p = 0; for (const g of gaps) { p += g; pos.push(p); }
+      const arcs = (p0, len, level, depth) => {
+        const g = len / q;
+        for (let i = 0; i < q; i++) spans.push({ p0: p0 + i * g, p1: p0 + (i + 1) * g, level });
+        if (q === 3) crosses.push(p0 + 2 * g);
+        if (depth > 0) arcs(p0, g, level + 1, depth - 1);
+      };
+      arcs(0, 1, 1, G - 2);
+    }
+    pos[pos.length - 1] = 1;
+    const ch = { G, pos, spans, crosses };
+    chartCache.set(key, ch);
+    return ch;
+  }
+
+  // ---------- sequence of arcs ----------
+  // arc: { start, dur, h (apex height 0..1 of drop), hasRise }  — the first arc is a fall only
+  let seq = null;
+  function buildSeq() {
+    const h = S.hold;
+    const T = S.timing * 2;                  // first full bounce = twice the drop; drop is a multiple of the hold
+    const arcs = [];
+    const D = S.travel / 100;                // stage widths per full bounce at the first bounce's duration
+    let t = 0, x = 0;
+    // first arc is a fall only: apex at x=0, contact half a bounce-width later
+    arcs.push({ start: 0, dur: T / 2, h: 1, hasRise: false, xApex: 0, halfW: D / 2 });
+    t += T / 2; x = D / 2;
+    let hh = 1;
+    for (let i = 0; i < S.bounces; i++) {
+      hh *= S.bounce / 100;
+      // time scales with the square root of height (physics), snapped to whole hold pairs
+      let d = Math.round((T * Math.sqrt(hh)) / (2 * h)) * 2 * h;
+      d = Math.max(4 * h, d);
+      const halfW = (D * hh) / 2;             // each bounce is a scaled copy of the last: width decays with height
+      arcs.push({ start: t, dur: d, h: hh, hasRise: true, xApex: x + halfW, halfW });
+      t += d; x += 2 * halfW;
+    }
+    const total = t, xEnd = x;
+    seq = { arcs, total, xEnd, loop: total + Math.round(REST_SECONDS * FPS) };
+    LOOP = seq.loop; $('scrub').max = LOOP;
+    return seq;
+  }
+
+  // Drawings in a bounce arc (offsets from the arc start, in holds):
+  //   contact (squash) · stretch out · in-betweens … apex … in-betweens · stretch in | next contact
+  // The stretches are placed extremes: the incoming one has its tip on the ground, the outgoing one
+  // is lifted clear of the squash. Charts run from an extreme to the apex only.
+  let HPX = 300;                               // pixels per drop height (set by the stage mapping)
+  // how much the incoming stretch deforms for an arc (as a fraction over 1): force scales with height fallen
+  // decays a touch faster than the height itself (h^1.5), so the tail bounces firm up sooner
+  const stretchDeform = ar => 0.6 * (S.squash / 100) * Math.pow(ar.h, 1.5);
+  // Below ±0.1 the stretch isn't worth planting on the ground (the ball reads as sticky),
+  // so the incoming extreme moves up to the 2/3 mark between apex and squash instead.
+  const STICKY = 0.1;
+  const yStretchIn = ar => stretchDeform(ar) < STICKY ? ar.h / 3 : 0;
+  const yStretchOut = ar => ar.h / 3;          // outgoing stretch sits at the 1/3 mark between squash and apex
+  function stateAt(f) {
+    const sq = seq || buildSeq();
+    const h = S.hold;
+    if (f > sq.total) return { x: sq.xEnd, y: 0, kind: 'rest', arc: sq.arcs.length - 1 };
+    if (f === sq.total) return { x: sq.xEnd, y: 0, kind: 'contact', arc: sq.arcs.length - 1 };
+    let a = sq.arcs.findIndex(ar => f >= ar.start && f < ar.start + ar.dur);
+    if (a < 0) a = sq.arcs.length - 1;
+    const ar = sq.arcs[a];
+    const lf = f - ar.start, half = ar.hasRise ? ar.dur / 2 : ar.dur;
+    const G = half / h - 1;                    // gaps in the chart for this half
+    const ch = chartFor(G);
+    const onArc = (y, side) => ({ x: ar.xApex + side * ar.halfW * Math.sqrt(Math.max(0, Math.min(1, 1 - y / ar.h))), y });
+    if (ar.hasRise && lf < half) {
+      if (lf === 0) return { x: ar.xApex - ar.halfW, y: 0, kind: 'contact', arc: a, half: 'rise' };
+      const j = lf / h - 1;                    // drawings since the outgoing stretch
+      const yBot = yStretchOut(ar);
+      const p = ch.pos[G - j];                 // 1 at the stretch, 0 at the apex
+      const y = ar.h - (ar.h - yBot) * p;
+      return { ...onArc(y, -1), kind: j === 0 ? 'stretchOut' : j === G ? 'apex' : 'between', arc: a, half: 'rise', chartIndex: G - j };
+    }
+    const lf2 = lf - (ar.hasRise ? half : 0);
+    const j = lf2 / h;                         // drawings since the apex
+    const yIn = yStretchIn(ar);
+    if (j === G) return { ...onArc(yIn, 1), kind: 'stretchIn', arc: a, half: 'fall', chartIndex: G };
+    const p = ch.pos[j];
+    return { ...onArc(ar.h - (ar.h - yIn) * p, 1), kind: j === 0 ? 'apex' : 'between', arc: a, half: 'fall', chartIndex: j };
+  }
+
+  // ---------- drawing ----------
+  const stage = $('stage'), ctx = stage.getContext('2d');
+  const tchart = $('tchart'), ttx = tchart.getContext('2d');
+  function fit(canvas) {
+    const r = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(r.width * dpr), hh = Math.round(r.height * dpr);
+    if (canvas.width !== w || canvas.height !== hh) { canvas.width = w; canvas.height = hh; }
+    return { w: r.width, h: r.height, dpr };
+  }
+
+  // stage mapping: world x in stage widths, y in drop-heights → pixels; horizontal scale so the path fits
+  function mapping(w, h) {
+    const sq = seq || buildSeq();
+    const R = S.size;
+    const ground = h - 28;
+    const Hpx = (S.height / 100) * (h - 28 - R * 2.2 - 16);
+    HPX = Hpx;
+    const totalX = sq.xEnd * w;
+    const avail = w - 2 * R - 40;
+    const scale = totalX > avail ? avail / totalX : 1;
+    const x0 = (w - totalX * scale) / 2;
+    return { R, ground, Hpx, scale, x0, cx: st => x0 + st.x * w * scale, cy: (st, lift = R) => ground - lift - st.y * Hpx };
+  }
+
+  // vertical half-extent of an ellipse with semi-axes (R*sx, R*sy) rotated by angle
+  const vertExtent = (R, sx, sy, angle) => Math.sqrt(Math.pow(R * sy * Math.cos(angle), 2) + Math.pow(R * sx * Math.sin(angle), 2));
+
+  // squash/stretch for the drawing at f: {sx, sy, angle, lift, st}
+  function deform(f, m) {
+    const amt = S.squash / 100;
+    const st = stateAt(f);
+    const R = m.R;
+    if (st.kind === 'rest') return { sx: 1, sy: 1, angle: 0, lift: R, st };
+    // force scales with the energy of the bounce: the height just fallen (squash, stretch in)
+    // or the height about to be reached (stretch out)
+    const fellFrom = st.kind === 'contact' && f === seq.total ? seq.arcs[seq.arcs.length - 1].h
+                   : st.kind === 'contact' ? seq.arcs[Math.max(0, st.arc - 1)].h : null;
+    if (st.kind === 'contact') { const sy = 1 - stretchDeform({ h: fellFrom }); return { sx: 1 / sy, sy, angle: 0, lift: R * sy, st }; }
+    const ar = seq.arcs[st.arc];
+    let dirX, dirY, s;
+    if (st.kind === 'stretchIn' || st.kind === 'stretchOut') {
+      const other = st.kind === 'stretchIn' ? stateAt(f - S.hold) : stateAt(f + S.hold);
+      dirX = st.kind === 'stretchIn' ? m.cx(st) - m.cx(other) : m.cx(other) - m.cx(st);
+      dirY = st.kind === 'stretchIn' ? m.cy(st) - m.cy(other) : m.cy(other) - m.cy(st);
+      s = 1 + stretchDeform(ar) * (st.kind === 'stretchOut' ? 0.85 : 1);
+    } else {
+      const prev = stateAt(Math.max(0, f - S.hold)), next = stateAt(f + S.hold);
+      dirX = (m.cx(next) - m.cx(prev)) / 2; dirY = (m.cy(next) - m.cy(prev)) / 2;
+      const v = Math.hypot(dirX, dirY) / S.hold;
+      const k = Math.min(1, v / maxSpeed(m));
+      s = 1 + 0.6 * amt * k * k;
+    }
+    const angle = Math.atan2(dirY, dirX) - Math.PI / 2;
+    const sx = 1 / s, sy = s;
+    return { sx, sy, angle, lift: vertExtent(R, sx, sy, angle), st };
+  }
+
+  function maxSpeed(m) {
+    // the fastest move between consecutive drawings anywhere in the sequence (pixels per frame)
+    let vmax = 1;
+    for (let f = S.hold; f <= seq.total; f += S.hold) {
+      const a = stateAt(f - S.hold), b = stateAt(f);
+      vmax = Math.max(vmax, Math.hypot(m.cx(b) - m.cx(a), m.cy(b) - m.cy(a)) / S.hold);
+    }
+    return vmax;
+  }
+
+  function drawBall(c, x, y, R, d, alpha, outline) {
+    c.save(); c.translate(x, y); c.rotate(d.angle); c.scale(d.sx, d.sy);
+    c.globalAlpha = alpha;
+    c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2);
+    if (!outline) { c.fillStyle = css('--ball'); c.fill(); }
+    c.lineWidth = outline ? 1.25 / Math.max(d.sx, d.sy) : 3 / Math.max(d.sx, d.sy);
+    c.strokeStyle = css('--ball-stroke'); c.stroke();
+    c.restore();
+  }
+
+  function render(frame) {
+    const { w, h, dpr } = fit(stage);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const m = mapping(w, h);
+    const Rpx = m.R;
+    const frames = []; for (let f = 0; f <= seq.total; f += S.hold) frames.push(f);
+
+    // ground
+    ctx.strokeStyle = css('--ground'); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16, m.ground + 1); ctx.lineTo(w - 16, m.ground + 1); ctx.stroke();
+
+    // path
+    if (S.showPath) {
+      ctx.strokeStyle = '#8b96a3'; ctx.lineWidth = 1.25; ctx.globalAlpha = .8; ctx.beginPath();
+      // the arcs are parabolas, independent of timing, spacing or hold
+      let first = true;
+      for (const ar of seq.arcs) {
+        const from = ar.hasRise ? -1 : 0;
+        for (let i = 0; i <= 40; i++) {
+          const u = from + (1 - from) * (i / 40);           // -1 (contact) .. 0 (apex) .. 1 (contact)
+          const px = m.cx({ x: ar.xApex + ar.halfW * u }), py = m.cy({ y: ar.h * (1 - u * u) });
+          if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py);
+        }
+      }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    // drawing centers as ticks across the path
+    if (S.showTicks) {
+      ctx.strokeStyle = css('--ink'); ctx.lineWidth = 1.5; ctx.globalAlpha = .8;
+      for (const f of frames) {
+        const d = deform(f, m);
+        if (d.st.kind === 'contact' || d.st.kind === 'rest') continue;   // the ground mark already shows the squash
+        const x = m.cx(d.st), y = m.cy(d.st, d.lift);
+        const prev = stateAt(Math.max(0, f - S.hold)), next = stateAt(Math.min(seq.total, f + S.hold));
+        const dx = m.cx(next) - m.cx(prev), dy = m.cy(next) - m.cy(prev);
+        const L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;    // perpendicular to the path
+        const t = d.st.kind === 'apex' || d.st.kind === 'contact' || d.st.kind.startsWith('stretch') ? 9 : 5;
+        ctx.beginPath(); ctx.moveTo(x - nx * t, y - ny * t); ctx.lineTo(x + nx * t, y + ny * t); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // every drawing
+    if (S.showAll) {
+      for (const f of frames) { const d = deform(f, m); drawBall(ctx, m.cx(d.st), m.cy(d.st, d.lift), Rpx, d, .55, true); }
+    }
+    // apex & contact marks
+    if (S.showApex) {
+      ctx.strokeStyle = S.markColor; ctx.fillStyle = S.markColor; ctx.lineWidth = 1.5;
+      for (const ar of seq.arcs) {
+        const cxp = m.cx({ x: ar.xApex }), cyp = m.cy({ y: ar.h });
+        ctx.setLineDash([5, 4]); ctx.globalAlpha = .7;
+        ctx.beginPath(); ctx.moveTo(cxp, cyp + Rpx); ctx.lineTo(cxp, m.ground); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.moveTo(cxp - 8, cyp); ctx.lineTo(cxp + 8, cyp); ctx.moveTo(cxp, cyp - 8); ctx.lineTo(cxp, cyp + 8); ctx.stroke();
+        const cxc = m.cx({ x: ar.xApex + ar.halfW });
+        ctx.beginPath(); ctx.moveTo(cxc - 7, m.ground + 1); ctx.lineTo(cxc + 7, m.ground + 1); ctx.lineWidth = 4; ctx.stroke(); ctx.lineWidth = 1.5;
+      }
+    }
+    // onion skins: previous drawings that were actually held
+    if (S.onionMode === 'on') {
+      for (let g = S.onion; g >= 1; g--) {
+        const f = frame - g * S.hold; if (f < 0) continue;
+        const d = deform(f, m);
+        drawBall(ctx, m.cx(d.st), m.cy(d.st, d.lift), Rpx, d, 0.34 * (1 - (g - 1) / S.onion), false);
+      }
+    }
+    // the ball
+    const d = deform(Math.min(frame, seq.total), m);
+    drawBall(ctx, m.cx(d.st), m.cy(d.st, d.lift), Rpx, d, 1, false);
+
+    const stRead = d.st;
+    const kindText = { contact: `contact · squash ×${d.sy.toFixed(2)}`, stretchIn: `incoming stretch ×${d.sy.toFixed(2)}` + (stRead.y > 0 ? ' · lifted (too little force to plant)' : ' · tip on the ground'), stretchOut: `outgoing stretch ×${d.sy.toFixed(2)} · lifted clear`, apex: 'apex · round', between: `in-between · stretch ×${d.sy.toFixed(2)}`, rest: 'at rest' }[stRead.kind];
+    $('readout').innerHTML = `height ${(stRead.y * 100).toFixed(0).padStart(3)}%<br>${kindText}`;
+    $('frameLabel').textContent = `frame ${frame + 1} · ${(frame / FPS).toFixed(2)} s · ${FPS} fps on ${['', 'ones', 'twos', 'threes', 'fours'][S.hold]}`;
+  }
+
+  // clickable frame numbers on the chart
+  const chartHits = [];
+  const hitAt = e => { const r = tchart.getBoundingClientRect(); const x = e.clientX - r.left, y = e.clientY - r.top; return chartHits.find(hh => x >= hh.x0 && x <= hh.x1 && y >= hh.y0 && y <= hh.y1); };
+  tchart.addEventListener('mousemove', e => { tchart.style.cursor = hitAt(e) ? 'pointer' : 'default'; });
+  tchart.addEventListener('click', e => { const hit = hitAt(e); if (!hit) return; playing = false; $('play').textContent = 'Play'; frame = hit.frame - 1; });
+
+  function renderChart(frame) {
+    const { w, h, dpr } = fit(tchart);
+    ttx.setTransform(dpr, 0, 0, dpr, 0, 0); ttx.clearRect(0, 0, w, h);
+    const st = stateAt(Math.min(frame, seq.total));
+    // which half-arc to show: the one the current drawing sits in; at a contact, the fall that just ended
+    let arcIdx = st.arc, half = st.half;
+    if (st.kind === 'contact' || st.kind === 'rest') { half = 'fall'; if (frame >= seq.total) arcIdx = seq.arcs.length - 1; else if (st.half === 'rise' && arcIdx > 0) arcIdx -= 1; }
+    const ar = seq.arcs[arcIdx];
+    const halfDur = ar.hasRise ? ar.dur / 2 : ar.dur;
+    const G = halfDur / S.hold - 1;
+    const ch = chartFor(G);
+    // absolute frame numbers (1-based) for the chart's drawings, listed from the apex outward
+    const apexOffset = ar.hasRise ? ar.start + halfDur : ar.start;
+    const frameAt = i => half === 'fall' ? apexOffset + i * S.hold + 1 : apexOffset - i * S.hold + 1;
+    const live = (st.half === half && st.arc === arcIdx && st.chartIndex !== undefined) ? st.chartIndex : -1;
+
+    const ink = css('--ink'), ink2 = css('--ink-2'), accent = css('--accent');
+    // time always reads downward: a fall starts at the apex, a rise starts at the outgoing stretch
+    const flip = half === 'rise';
+    const top = 26, bot = h - 26, X = Math.round(w * 0.5), Y = p => top + (bot - top) * (flip ? 1 - p : p);
+    chartHits.length = 0;
+    ttx.lineCap = 'round';
+    ttx.strokeStyle = ink; ttx.lineWidth = 3; ttx.beginPath(); ttx.moveTo(X, Y(0)); ttx.lineTo(X, Y(1)); ttx.stroke();
+    const maxLevel = ch.spans.length ? Math.max(...ch.spans.map(sp => sp.level)) : 1;
+    // the outermost brackets always get the full loft; each nested level steps in by a fixed amount
+    const outerRx = X - 22;
+    const step = Math.min(11, Math.max(5, (outerRx - 6) / Math.max(1, maxLevel - 1)));
+    ttx.lineWidth = 1.25;
+    for (const sp of ch.spans) {
+      const y0 = Y(sp.p0), y1 = Y(sp.p1), mid = (y0 + y1) / 2, ry = Math.max(Math.abs(y1 - y0) / 2, .5);
+      const rx = Math.max(5, outerRx - (sp.level - 1) * step);
+      ttx.strokeStyle = sp.level === 1 ? ink : ink2; ttx.globalAlpha = sp.level === 1 ? 1 : .85;
+      ttx.beginPath(); ttx.ellipse(X - 8, mid, rx, ry, 0, Math.PI / 2, 3 * Math.PI / 2); ttx.stroke();
+    }
+    ttx.globalAlpha = .9; ttx.strokeStyle = ink2; ttx.lineWidth = 1.5;
+    for (const cp of ch.crosses) { const y = Y(cp); ttx.beginPath(); ttx.moveTo(X - 7, y - 6); ttx.lineTo(X + 7, y + 6); ttx.moveTo(X + 7, y - 6); ttx.lineTo(X - 7, y + 6); ttx.stroke(); }
+    ttx.globalAlpha = 1; ttx.font = '600 13px Archivo, sans-serif'; ttx.textBaseline = 'middle';
+    for (let i = 0; i <= G; i++) {
+      const y = Y(ch.pos[i]), key = i === 0 || i === G, isLive = i === live;
+      const len = key ? 16 : 8;
+      ttx.strokeStyle = isLive ? accent : ink; ttx.lineWidth = key ? 3 : 1.5;
+      ttx.beginPath(); ttx.moveTo(X - len, y); ttx.lineTo(X + len, y); ttx.stroke();
+      const fr = frameAt(i), label = String(fr);
+      ttx.fillStyle = isLive ? accent : key ? ink : ink2;
+      if (key) { const cx = X + 34; ttx.strokeStyle = isLive ? accent : ink; ttx.lineWidth = 1.75; ttx.beginPath(); ttx.arc(cx, y, 12, 0, Math.PI * 2); ttx.stroke(); ttx.textAlign = 'center'; ttx.fillText(label, cx, y); chartHits.push({ x0: cx - 14, x1: cx + 14, y0: y - 13, y1: y + 13, frame: fr }); }
+      else { ttx.textAlign = 'left'; ttx.font = '12px Archivo, sans-serif'; ttx.fillText(label, X + len + 6, y); ttx.font = '600 13px Archivo, sans-serif'; chartHits.push({ x0: X + len + 2, x1: X + len + 32, y0: y - 9, y1: y + 9, frame: fr }); }
+    }
+    ttx.textAlign = 'center'; ttx.fillStyle = ink2; ttx.font = '10px Archivo, sans-serif';
+    ttx.fillText(flip ? 'stretch out' : 'apex', X, top - 14); ttx.fillText(flip ? 'apex' : 'stretch in', X, bot + 14);
+    const name = { even: 'Even', halves: 'Halves', thirds: 'Thirds' }[S.ease];
+    const where = arcIdx === 0 ? 'the drop' : `bounce ${arcIdx} · ${half === 'fall' ? 'coming down' : 'going up'}`;
+    $('chartCap').textContent = `${where} · ${name}, ${G - 1} in-btwn`;
+  }
+
+  // ---------- playback ----------
+  let playing = true, frame = 0, last = performance.now();
+  const scrub = $('scrub');
+  function tick(now) {
+    if (playing) frame = (frame + (now - last) / 1000 * FPS) % LOOP;
+    last = now;
+    const f = Math.floor(Math.floor(frame) / S.hold) * S.hold;
+    render(f); renderChart(f);
+    scrub.value = Math.floor(frame) + 1;
+    $('scrubLabel').textContent = `${Math.floor(frame) + 1} / ${LOOP}`;
+    requestAnimationFrame(tick);
+  }
+  $('play').addEventListener('click', e => { playing = !playing; e.currentTarget.textContent = playing ? 'Pause' : 'Play'; });
+  scrub.addEventListener('input', () => { playing = false; $('play').textContent = 'Play'; frame = +scrub.value - 1; });
+  window.addEventListener('keydown', e => {
+    if (e.target.matches('input,button,select,textarea') && e.code !== 'Space') return;
+    if (e.code === 'Space') { e.preventDefault(); $('play').click(); }
+    if (e.key === 'ArrowRight') { playing = false; frame = (Math.floor(frame) + S.hold) % LOOP; $('play').textContent = 'Play'; }
+    if (e.key === 'ArrowLeft') { playing = false; frame = (Math.floor(frame) - S.hold + LOOP) % LOOP; $('play').textContent = 'Play'; }
+  });
+
+  // ---------- controls ----------
+  function rebuild() { chartCache.clear(); buildSeq(); syncHash(); }
+  function bindRange(key, id, outId, fmt = v => v) {
+    const r = $(id), o = outId ? $(outId) : null;
+    r.addEventListener('input', () => { S[key] = +r.value; if (o) o.value = fmt(S[key]); rebuild(); });
+    return v => { S[key] = +v; r.value = v; if (o) o.value = fmt(v); };
+  }
+  const setSize = bindRange('size', 'size', 'sizeO');
+  const setSquash = bindRange('squash', 'squash', 'squashO');
+  const setHeight = bindRange('height', 'height', 'heightO', v => v + '%');
+  const setTravel = bindRange('travel', 'travel', 'travelO', v => v + '%');
+  const setBounce = bindRange('bounce', 'bounce', 'bounceO', v => v + '%');
+  const setBounces = bindRange('bounces', 'bounces', 'bouncesO');
+  const setOnion = bindRange('onion', 'onion', 'onionO');
+
+  // timing: a full bounce must split into two halves of whole holds
+  // the drop must land on whole holds and leave room for the stretch extreme plus at least one in-between
+  function snapTiming(T) { const step = S.hold, min = 2 * S.hold; const hi = +$('timing').max; let t = Math.round(T / step) * step; return Math.max(min, Math.min(hi - (hi % step), t)); }
+  const setTiming = v => { S.timing = snapTiming(+v); $('timing').value = S.timing; $('timingN').value = S.timing; rebuild(); };
+  $('timing').addEventListener('input', () => { S.timing = snapTiming(+$('timing').value); $('timingN').value = S.timing; rebuild(); });
+  $('timing').addEventListener('change', () => setTiming(S.timing));
+  $('timingN').addEventListener('change', () => setTiming(+$('timingN').value));
+
+  function bindSeg(id, key, parse = v => v, after) {
+    $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S[key] = parse(b.dataset.v); refreshSeg(id, key); if (after) after(); rebuild(); });
+  }
+  function refreshSeg(id, key) { $(id).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v == S[key]))); }
+  bindSeg('ease', 'ease');
+  bindSeg('onionMode', 'onionMode');
+  bindSeg('hold', 'hold', Number, () => setTiming(S.timing));
+  bindSeg('fps', 'fps', Number, () => applyFps());
+  ['showPath', 'showAll', 'showTicks', 'showApex'].forEach(k => $(k).addEventListener('change', () => { S[k] = $(k).checked; syncHash(); }));
+  $('markColor').addEventListener('input', () => { S.markColor = $('markColor').value; document.documentElement.style.setProperty('--accent', S.markColor); syncHash(); });
+
+  function applyFps() {
+    const prev = FPS; FPS = S.fps;
+    $('timing').max = 24; $('timingN').max = 24;
+    if (prev !== FPS) setTiming(Math.round(S.timing * FPS / prev));   // keep the drop the same real time
+    buildSeq();
+  }
+  function applyAll() {
+    setSize(S.size); setSquash(S.squash); setHeight(S.height); setTravel(S.travel); setBounce(S.bounce); setBounces(S.bounces); setOnion(S.onion);
+    ['ease', 'onionMode', 'hold', 'fps'].forEach(k => refreshSeg(k, k));
+    ['showPath', 'showAll', 'showTicks', 'showApex'].forEach(k => $(k).checked = S[k]);
+    $('markColor').value = S.markColor; document.documentElement.style.setProperty('--accent', S.markColor);
+    FPS = S.fps; applyFps(); setTiming(S.timing);
+  }
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { Object.assign(S, PRESETS[b.dataset.preset]); applyAll(); frame = 0; }));
+
+  // ---------- URL state ----------
+  let hashTimer;
+  function syncHash() { clearTimeout(hashTimer); hashTimer = setTimeout(() => { history.replaceState(null, '', '#' + new URLSearchParams(S).toString()); }, 150); }
+  function loadHash() {
+    if (!location.hash) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    for (const [k, v] of p) { if (!(k in S)) continue; S[k] = typeof S[k] === 'number' ? +v : typeof S[k] === 'boolean' ? v === 'true' : v; }
+    if (S.fps !== 24 && S.fps !== 30) S.fps = 24;
+  }
+  $('copy').addEventListener('click', async e => {
+    try { await navigator.clipboard.writeText(location.href); e.currentTarget.textContent = 'Copied'; }
+    catch { e.currentTarget.textContent = 'Copy from the address bar'; }
+    setTimeout(() => e.currentTarget.textContent = 'Copy link', 1800);
+  });
+
+  loadHash(); applyAll();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
