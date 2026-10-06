@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive Timing Chart</title>
+<style>
+  :root {
+    --bg: #d9dde3; --panel: #eef0f3; --panel-2: #e2e5ea;
+    --ink: #1d242c; --ink-2: #4a5663; --ink-3: #8b96a3; --line: #c3c9d1;
+    --stage: #ffffff; --ball: #f2a33a; --accent: #e03ac8; --focus: #2b7fd0;
+  }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Helvetica Neue",Arial,sans-serif; font-size:14px; display:flex; flex-direction:column; align-items:center; padding:20px; }
+  .header { text-align:center; margin-bottom:20px; }
+  .header h1 { margin:0 0 8px; font-size:24px; }
+  .header p { margin:0; color:var(--ink-2); max-width:600px; }
+  .app-container { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; background:var(--stage); padding:20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); width:100%; max-width:700px; box-sizing:border-box; }
+  .column { display:flex; flex-direction:column; align-items:center; min-width:250px; }
+  .column h2 { margin:0 0 10px; font-size:16px; }
+  .note { font-size:12px; color:var(--ink-3); margin:0 0 8px; text-align:center; width:250px; height:2.8em; line-height:1.3; overflow:hidden; box-sizing:border-box; padding:0 4px; }
+  canvas { background:var(--panel); border:1px solid var(--line); border-radius:6px; touch-action:none; }
+  #chartCanvas { cursor:crosshair; }
+  .status { width:250px; height:2.8em; overflow:hidden; font-size:12px; line-height:1.3; color:var(--ink-2); margin:0 0 8px; text-align:center; box-sizing:border-box; padding:0 4px; }
+  .status b { color:var(--accent); font-weight:600; }
+  .banner { flex-basis:100%; width:100%; box-sizing:border-box; margin-top:4px; padding:9px 14px; border-radius:6px; font-size:13px; line-height:1.3; height:calc(2.6em + 18px); overflow:hidden; display:flex; align-items:center; justify-content:center; text-align:center; background:var(--panel-2); color:var(--ink-2); }
+  .banner.play { background:#e6f4ec; color:#1f6b45; }
+  .banner.paused { background:#fde9f7; color:#8a2a74; }
+  .banner.build { background:var(--panel-2); }
+  .controls label { display:inline-flex; align-items:center; gap:6px; color:var(--ink-2); }
+  .controls input[type=range] { flex:1 1 140px; min-width:120px; accent-color:var(--accent); }
+  button.btn.primary { background:var(--ink); color:var(--stage); border-color:var(--ink); }
+  button.btn[disabled] { opacity:.45; cursor:default; }
+  .controls { margin-top:14px; display:flex; gap:15px; flex-wrap:wrap; background:var(--stage); padding:15px 20px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); align-items:center; width:100%; max-width:700px; box-sizing:border-box; }
+  .seg { display:inline-flex; background:var(--panel-2); border-radius:5px; padding:2px; gap:2px; }
+  .seg button { border:0; background:transparent; color:var(--ink-2); padding:6px 12px; border-radius:4px; font:inherit; cursor:pointer; }
+  .seg button[aria-pressed="true"] { background:var(--stage); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  button.btn { font:inherit; color:var(--ink); background:var(--panel-2); border:1px solid var(--line); border-radius:5px; padding:6px 12px; cursor:pointer; }
+  button.btn:hover { background:var(--line); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Interactive Timing Chart</h1>
+  <p>Drag on the chart line to add an in-between; it snaps to the half or the thirds of the space it lands in. Drag a mark to move it; drag it well off the line sideways (or double-click it) to remove it. Placing a third also drops an ✕ at the other third: a spacing guide, not a drawing. Click an ✕ to make it a drawing, click again to turn it back.</p>
+</div>
+
+<div class="app-container">
+  <div class="column">
+    <h2>Animation</h2>
+    <p class="note" id="animNote">Waiting for your chart.</p>
+    <canvas id="animCanvas" width="200" height="500"></canvas>
+  </div>
+  <div class="column">
+    <h2>Timing Chart</h2>
+    <div class="status" id="status">Drag on the line to place your first in-between.</div>
+    <canvas id="chartCanvas" width="250" height="500"></canvas>
+  </div>
+  <div class="banner build" id="banner">Build your chart first. Drag on the line to place in-betweens; the ball won't move until you test it.</div>
+</div>
+
+<div class="controls">
+  <button class="btn primary" id="testBtn">Test your chart</button>
+  <button class="btn" id="playBtn" disabled>Pause</button>
+  <input type="range" id="scrub" min="0" max="1" step="1" value="0" disabled aria-label="Scrub drawings">
+  <label><input type="checkbox" id="onion" disabled> Onion skin</label>
+</div>
+<div class="controls" style="margin-top:10px">
+  <span style="font-weight:bold;color:var(--ink-2)">Hold on:</span>
+  <div class="seg" id="holdSeg">
+    <button data-v="1" aria-pressed="false">Ones</button>
+    <button data-v="2" aria-pressed="true">Twos</button>
+    <button data-v="3" aria-pressed="false">Threes</button>
+  </div>
+  <button class="btn" id="clearBtn" style="margin-left:auto">Restart</button>
+</div>
+
+<script>
+(() => {
+  const animCanvas = document.getElementById('animCanvas'), actx = animCanvas.getContext('2d');
+  const chartCanvas = document.getElementById('chartCanvas'), cctx = chartCanvas.getContext('2d');
+  const statusEl = document.getElementById('status');
+
+  const FPS = 24;
+  const CHART_TOP = 50, CHART_BOTTOM = 450, CHART_H = CHART_BOTTOM - CHART_TOP, CHART_X = 150;
+  const SNAP_PX = 15, HIT_PX = 12, DISCARD_PX = 70;   // drag a mark this far sideways to remove it
+  let hold = 2;
+  let mode = 'build';            // build | play | paused
+  let curIdx = 0;                // drawing shown while paused
+  let onion = false;
+  const onionPref = { play: false, paused: true };   // per-mode default, remembered when the user changes it in that mode
+
+  // ---------- data model ----------
+  // A mark is a point on the chart. kind: 'key' (the two ends), 'draw' (a drawing), 'guide' (an ✕: spacing only).
+  // A split records how a mark was made: the interval it was placed in and the rule (half or third).
+  // Arcs are drawn from splits, so nesting falls out of which intervals contain which.
+  let nextId = 1;
+  let marks = [], splits = [];
+  function reset() {
+    marks = [{ id: nextId++, t: 0, kind: 'key' }, { id: nextId++, t: 1, kind: 'key' }];
+    splits = [];
+  }
+  reset();
+  const byId = id => marks.find(m => m.id === id);
+  const sorted = () => [...marks].sort((a, b) => a.t - b.t);
+  const drawings = () => sorted().filter(m => m.kind !== 'guide');   // keys + drawings, in order
+  const frameOf = m => { const i = drawings().indexOf(m); return i < 0 ? null : 1 + i * hold; };
+  const fmtT = t => t.toFixed(5);
+
+  // neighbours of a position among marks (optionally ignoring one mark, e.g. the one being dragged)
+  function neighbours(t, ignoreId) {
+    const list = sorted().filter(m => m.id !== ignoreId);
+    let lo = list[0], hi = list[list.length - 1];
+    for (const m of list) { if (m.t < t && m.t > lo.t) lo = m; if (m.t > t && m.t < hi.t) hi = m; }
+    return { lo, hi };
+  }
+
+  // snap a position to the half or thirds of the space between its neighbours
+  // Snap against EVERY pair of marks, not just the neighbours: the half of 1–9 and the half of 5–9
+  // are both candidates, and the nearest one wins (ties go to the larger span).
+  function snap(t, ignoreId, range) {
+    const list = sorted().filter(m => m.id !== ignoreId);
+    let best = null;
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const lo = list[i], hi = list[j], L = hi.t - lo.t;
+      const cands = [
+        { t: lo.t + L / 2, rule: 'half', label: '½' },
+        { t: lo.t + L / 3, rule: 'third', label: '⅓', other: lo.t + 2 * L / 3 },
+        { t: lo.t + 2 * L / 3, rule: 'third', label: '⅔', other: lo.t + L / 3 },
+      ];
+      for (const c of cands) {
+        if (range && (c.t < range.min || c.t > range.max)) continue;
+        if (list.some(m => Math.abs(m.t - c.t) < 0.003)) continue;        // already a mark there
+        const d = Math.abs(c.t - t) * CHART_H;
+        if (d < SNAP_PX && (!best || d < best.d - 0.5 || (Math.abs(d - best.d) <= 0.5 && L > best.L))) best = { ...c, d, L, lo, hi };
+      }
+    }
+    const { lo, hi } = neighbours(t, ignoreId);
+    return best ? { lo: best.lo, hi: best.hi, snapped: best, t: best.t } : { lo, hi, snapped: null, t };
+  }
+
+  // remove any split that used this mark as an endpoint or created it (it no longer describes the chart)
+  function invalidate(markId) {
+    const dead = splits.filter(s => s.lo === markId || s.hi === markId || s.made.includes(markId));
+    for (const s of dead) {
+      // guides that only existed because of this split go too
+      for (const id of s.made) { const m = byId(id); if (m && m.kind === 'guide' && id !== markId) marks = marks.filter(x => x.id !== id); }
+    }
+    splits = splits.filter(s => !dead.includes(s));
+  }
+
+  // place (or re-place) a mark at t: records a split if it snapped, drops a guide for thirds
+  function commit(mark, result) {
+    mark.t = result.t;
+    mark.fromThirds = false;
+    if (!result.snapped) { mark.rule = null; return; }
+    const { lo, hi, snapped } = result;
+    mark.rule = snapped.rule;
+    const made = [mark.id];
+    if (snapped.rule === 'third') {
+      const exists = marks.find(m => Math.abs(m.t - snapped.other) < 0.002);
+      if (!exists) { const g = { id: nextId++, t: snapped.other, kind: 'guide', rule: 'third', fromThirds: true }; marks.push(g); made.push(g.id); }
+      mark.fromThirds = true;
+    }
+    splits.push({ id: nextId++, lo: lo.id, hi: hi.id, rule: snapped.rule, made });
+  }
+
+  // ---------- status text ----------
+  function describe(mark, result) {
+    const f = frameOf(mark);
+    const name = mark.kind === 'guide' ? 'Guide ✕' : `Drawing ${f}`;
+    const { lo, hi } = result;
+    const between = `between ${lo.kind === 'guide' ? '✕' : frameOf(lo)} and ${hi.kind === 'guide' ? '✕' : frameOf(hi)}`;
+    if (!result.snapped) return `${name} placed freehand ${between} — not an even breakdown.`;
+    if (result.snapped.rule === 'half') return `${name} placed at the <b>½</b> mark ${between}.`;
+    return `${name} placed at the <b>${result.snapped.label}</b> mark ${between}; ✕ marks the other third.`;
+  }
+
+  // ---------- interaction ----------
+  let drag = null;   // { mark, startT, moved, isNew, result }
+  const yToT = y => Math.max(0, Math.min(1, (y - CHART_TOP) / CHART_H));
+  const tToY = t => CHART_TOP + t * CHART_H;
+  const pos = e => { const r = chartCanvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * chartCanvas.width / r.width, y: (e.clientY - r.top) * chartCanvas.height / r.height }; };
+  function hit(p) {
+    let best = null;
+    for (const m of marks) { if (m.kind === 'key') continue; const d = Math.abs(tToY(m.t) - p.y); if (d < HIT_PX && Math.abs(p.x - CHART_X) < 60 && (!best || d < best.d)) best = { m, d }; }
+    return best ? best.m : null;
+  }
+
+  chartCanvas.addEventListener('pointerdown', e => {
+    const p = pos(e);
+    if (p.y < CHART_TOP - 10 || p.y > CHART_BOTTOM + 10 || Math.abs(p.x - CHART_X) > 70) return;
+    if (mode === 'paused') {
+      // the chart is a set of links now: a tick or its number jumps the stage to that drawing
+      const list = drawings(); let best = null;
+      list.forEach((m, i) => { const d = Math.abs(tToY(m.t) - p.y); if (d < HIT_PX && (!best || d < best.d)) best = { i, d }; });
+      if (best) { curIdx = best.i; syncScrub(); draw(); }
+      return;
+    }
+    chartCanvas.setPointerCapture(e.pointerId);
+    const existing = hit(p);
+    if (existing) {
+      drag = { mark: existing, startT: existing.t, startY: p.y, moved: false, isNew: false, result: null };
+    } else {
+      const m = { id: nextId++, t: yToT(p.y), kind: 'draw', pending: true };
+      marks.push(m);
+      const nb = neighbours(m.t, m.id);
+      drag = { mark: m, startT: m.t, startY: p.y, moved: true, isNew: true, result: snap(m.t, m.id, { min: nb.lo.t + 0.004, max: nb.hi.t - 0.004 }) };
+      m.t = drag.result.t;
+    }
+    draw();
+  });
+  chartCanvas.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const p = pos(e);
+    if (!drag.moved && Math.abs(p.y - drag.startY) < 4) return;
+    drag.moved = true;
+    drag.discard = Math.abs(p.x - CHART_X) > DISCARD_PX;
+    if (!drag.isNew && !drag.detached) { invalidate(drag.mark.id); drag.detached = true; }
+    const { lo, hi } = neighbours(drag.startT, drag.mark.id);
+    const t = Math.max(lo.t + 0.004, Math.min(hi.t - 0.004, yToT(p.y)));
+    drag.result = snap(t, drag.mark.id, { min: lo.t + 0.004, max: hi.t - 0.004 });
+    drag.mark.t = drag.result.t;
+    draw();
+  });
+  const endDrag = e => {
+    if (!drag) return;
+    const { mark } = drag;
+    if (!drag.moved) {
+      // a click: toggle a thirds guide ↔ drawing
+      if (mark.fromThirds) {
+        mark.kind = mark.kind === 'guide' ? 'draw' : 'guide';
+        statusEl.innerHTML = mark.kind === 'draw'
+          ? `✕ is now <b>drawing ${frameOf(mark)}</b>. Click it again to make it a guide.`
+          : `Drawing turned back into a <b>✕ guide</b>; it still holds the spacing but isn't drawn.`;
+      }
+    } else if (drag.discard) {
+      invalidate(mark.id);
+      marks = marks.filter(x => x.id !== mark.id);
+      statusEl.innerHTML = drag.isNew ? 'Dropped.' : `Removed ${mark.kind === 'guide' ? 'a guide' : 'a drawing'} by dragging it off the line.`;
+    } else {
+      delete mark.pending;
+      commit(mark, drag.result);
+      statusEl.innerHTML = describe(mark, drag.result);
+    }
+    drag = null;
+    draw();
+  };
+  chartCanvas.addEventListener('pointerup', endDrag);
+  chartCanvas.addEventListener('pointercancel', endDrag);
+  chartCanvas.addEventListener('dblclick', e => {
+    if (mode === 'paused') return;
+    const m = hit(pos(e));
+    if (!m) return;
+    invalidate(m.id);
+    marks = marks.filter(x => x.id !== m.id);
+    statusEl.innerHTML = `Removed ${m.kind === 'guide' ? 'a guide' : 'a drawing'}.`;
+    draw();
+  });
+
+  // ---------- chart drawing ----------
+  function draw() {
+    cctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+    const ink = '#1d242c', ink2 = '#4a5663', ink3 = '#8b96a3', accent = '#e03ac8';
+
+    // spine
+    cctx.lineCap = 'round';
+    cctx.beginPath(); cctx.moveTo(CHART_X, CHART_TOP); cctx.lineTo(CHART_X, CHART_BOTTOM); cctx.lineWidth = 2.5; cctx.strokeStyle = ink; cctx.stroke();
+
+    // arcs: one set per split, nested by how many other splits contain it; outermost brackets get the most loft
+    const spans = splits.map(s => { const lo = byId(s.lo), hi = byId(s.hi); return lo && hi ? { lo: lo.t, hi: hi.t, q: s.rule === 'half' ? 2 : 3 } : null; }).filter(Boolean);
+    for (const sp of spans) sp.level = 1 + spans.filter(o => o !== sp && o.lo <= sp.lo && o.hi >= sp.hi && (o.hi - o.lo) > (sp.hi - sp.lo)).length;
+    const maxLevel = spans.length ? Math.max(...spans.map(s => s.level)) : 1;
+    const outerRx = 44, step = Math.min(11, Math.max(6, (outerRx - 8) / Math.max(1, maxLevel - 1)));
+    cctx.lineWidth = 1.5;
+    for (const sp of spans) {
+      const g = (sp.hi - sp.lo) / sp.q, rx = Math.max(6, outerRx - (sp.level - 1) * step);
+      cctx.strokeStyle = sp.level === 1 ? ink2 : ink3;
+      for (let i = 0; i < sp.q; i++) {
+        const y0 = tToY(sp.lo + i * g), y1 = tToY(sp.lo + (i + 1) * g);
+        cctx.beginPath(); cctx.ellipse(CHART_X - 6, (y0 + y1) / 2, rx, Math.max(0.5, (y1 - y0) / 2), 0, Math.PI / 2, 3 * Math.PI / 2); cctx.stroke();
+      }
+    }
+
+    // marks
+    cctx.font = '600 13px "Helvetica Neue", sans-serif'; cctx.textBaseline = 'middle';
+    for (const m of sorted()) {
+      const pair = drag && drag.result && drag.result.snapped && (drag.result.lo === m || drag.result.hi === m);
+      const y = tToY(m.t), live = (drag && drag.mark === m) || pair || (mode === 'paused' && drawings()[curIdx] === m);
+      const col = live ? accent : ink;
+      cctx.globalAlpha = (drag && drag.mark === m && drag.discard) ? .25 : 1;
+      if (m.kind === 'guide') {
+        cctx.strokeStyle = live ? accent : ink2; cctx.lineWidth = 1.75;
+        cctx.beginPath(); cctx.moveTo(CHART_X - 7, y - 6); cctx.lineTo(CHART_X + 7, y + 6); cctx.moveTo(CHART_X + 7, y - 6); cctx.lineTo(CHART_X - 7, y + 6); cctx.stroke();
+        continue;
+      }
+      const key = m.kind === 'key', w = key ? 16 : 8;
+      cctx.beginPath(); cctx.moveTo(CHART_X - w, y); cctx.lineTo(CHART_X + w, y); cctx.lineWidth = key ? 3 : 2; cctx.strokeStyle = col; cctx.stroke();
+      const f = frameOf(m);
+      cctx.fillStyle = live ? accent : key ? ink : ink2;
+      if (key) { cctx.textAlign = 'center'; cctx.beginPath(); cctx.arc(CHART_X + 36, y, 12, 0, Math.PI * 2); cctx.strokeStyle = col; cctx.lineWidth = 1.5; cctx.stroke(); cctx.fillText(f, CHART_X + 36, y + 1); }
+      else { cctx.textAlign = 'left'; cctx.fillText(f, CHART_X + 22, y + 1); }
+      if (m.fromThirds && !key && mode !== 'paused') { cctx.fillStyle = ink3; cctx.font = '10px "Helvetica Neue", sans-serif'; cctx.fillText('click: ✕', CHART_X + 46, y + 1); cctx.font = '600 13px "Helvetica Neue", sans-serif'; }
+    }
+
+    cctx.globalAlpha = 1;
+    if (drag && drag.discard) { cctx.fillStyle = '#d9463c'; cctx.font = '600 12px "Helvetica Neue", sans-serif'; cctx.textAlign = 'center'; cctx.fillText('release to remove', CHART_X, CHART_TOP - 24); }
+    if (mode === 'paused') chartCanvas.style.cursor = 'pointer'; else chartCanvas.style.cursor = 'crosshair';
+
+    // snap hint while dragging
+    if (drag && drag.result && drag.result.snapped) {
+      cctx.fillStyle = accent; cctx.font = '600 12px "Helvetica Neue", sans-serif'; cctx.textAlign = 'right';
+      const r = drag.result, lab = m => m.kind === 'guide' ? '✕' : frameOf(m);
+      cctx.fillText(`${r.snapped.label} of ${lab(r.lo)}–${lab(r.hi)}`, CHART_X - 60, tToY(drag.mark.t) + 1);
+    }
+  }
+
+  // ---------- animation ----------
+  let startTime = performance.now();
+  function drawBall(y, alpha, label) {
+    actx.globalAlpha = alpha;
+    actx.beginPath(); actx.arc(100, y, 15, 0, Math.PI * 2); actx.fillStyle = '#f2a33a'; actx.fill(); actx.lineWidth = 2; actx.strokeStyle = '#1d242c'; actx.stroke();
+    if (label !== undefined) { actx.fillStyle = '#1d242c'; actx.font = '600 13px "Helvetica Neue", sans-serif'; actx.textAlign = 'center'; actx.textBaseline = 'middle'; actx.fillText(label, 100, y + 1); }
+    actx.globalAlpha = 1;
+  }
+  function drawAnim() {
+    const list = drawings();
+    actx.clearRect(0, 0, animCanvas.width, animCanvas.height);
+    actx.beginPath(); actx.moveTo(100, CHART_TOP); actx.lineTo(100, CHART_BOTTOM); actx.strokeStyle = '#c3c9d1'; actx.lineWidth = 2; actx.setLineDash([4, 4]); actx.stroke(); actx.setLineDash([]);
+    let idx = 0, caption = '';
+    if (mode === 'build') {
+      drawBall(tToY(list[0].t), .35);
+      caption = 'press "Test your chart" to play';
+    } else {
+      if (mode === 'play') {
+        const elapsed = (performance.now() - startTime) / 1000;
+        const totalFrames = list.length * hold + Math.round(FPS * 0.4);
+        const frame = Math.floor((elapsed % (totalFrames / FPS)) * FPS);
+        idx = Math.min(Math.floor(frame / hold), list.length - 1);
+        curIdx = idx;
+      } else idx = Math.min(curIdx, list.length - 1);
+      if (onion) list.forEach((m, i) => { if (i !== idx) drawBall(tToY(m.t), .18); });
+      drawBall(tToY(list[idx].t), 1, mode === 'paused' ? 1 + idx * hold : undefined);
+      caption = `frame ${1 + idx * hold}`;
+    }
+    actx.fillStyle = '#8b96a3'; actx.font = '11px "Helvetica Neue", sans-serif'; actx.textAlign = 'center'; actx.textBaseline = 'alphabetic'; actx.fillText(caption, 100, CHART_BOTTOM + 28);
+    if (mode === 'paused') draw();   // keep the chart highlight in step when scrubbing
+    requestAnimationFrame(drawAnim);
+  }
+
+  // ---------- modes ----------
+  const banner = document.getElementById('banner'), testBtn = document.getElementById('testBtn'), playBtn = document.getElementById('playBtn'), scrub = document.getElementById('scrub');
+  function setMode(m) {
+    mode = m;
+    banner.className = 'banner ' + m;
+    if (m === 'build') { banner.textContent = "Build your chart first. Drag on the line to place in-betweens; the ball won't move until you test it."; document.getElementById('animNote').textContent = 'Waiting for your chart.'; }
+    if (m === 'play') { banner.textContent = 'Playing. Keep editing your chart while it plays: drag, add, or remove marks and the ball follows.'; document.getElementById('animNote').textContent = 'Plays the drawings on the chart.'; startTime = performance.now(); }
+    if (m === 'paused') { banner.textContent = 'Paused. The chart is locked while paused: click a tick or a number, or scrub, to see which drawing it is.'; document.getElementById('animNote').textContent = 'Scrub or click the chart to step through drawings.'; }
+    testBtn.disabled = m !== 'build';
+    playBtn.disabled = m === 'build';
+    playBtn.textContent = m === 'paused' ? 'Play' : 'Pause';
+    scrub.disabled = m !== 'paused';
+    const onionBox = document.getElementById('onion');
+    onionBox.disabled = m === 'build';
+    onion = m === 'build' ? false : onionPref[m];
+    onionBox.checked = onion;
+    syncScrub(); draw();
+  }
+  function syncScrub() { const n = drawings().length; scrub.max = n - 1; curIdx = Math.min(curIdx, n - 1); scrub.value = curIdx; }
+  testBtn.addEventListener('click', () => setMode('play'));
+  playBtn.addEventListener('click', () => setMode(mode === 'play' ? 'paused' : 'play'));
+  scrub.addEventListener('input', () => { curIdx = +scrub.value; draw(); });
+  document.getElementById('onion').addEventListener('change', e => { onion = e.target.checked; if (mode !== 'build') onionPref[mode] = onion; });
+
+  // ---------- controls ----------
+  document.getElementById('holdSeg').addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    document.querySelectorAll('#holdSeg button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+    e.target.setAttribute('aria-pressed', 'true');
+    hold = parseInt(e.target.dataset.v); draw();
+  });
+  document.getElementById('clearBtn').addEventListener('click', () => { reset(); curIdx = 0; statusEl.textContent = 'Cleared. Drag on the line to place your first in-between.'; setMode('build'); });
+
+  setMode('build'); drawAnim();
+})();
+</script>
+</body>
+</html>
